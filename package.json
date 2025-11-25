@@ -1,8 +1,29 @@
 {
   "name": "mcp-medusa",
   "version": "1.0.0",
-  "description": "A simple MCP server for medusa",
+  "description": "MCP server for MedusaJS e-commerce backend operations",
   "main": "index.js",
+  "bin": {
+    "mcp-medusa": "./mcpServer.js"
+  },
+  "files": [
+    "mcpServer.js",
+    "tools/",
+    "lib/",
+    "env.example"
+  ],
+  "keywords": [
+    "mcp",
+    "medusa",
+    "medusajs",
+    "ecommerce",
+    "claude",
+    "ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/minimalart/mcp-medusa.git"
+  },
   "type": "module",
   "scripts": {
     "list-tools": "node index.js tools",
