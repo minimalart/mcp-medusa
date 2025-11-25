@@ -1,0 +1,41 @@
+{
+  "name": "mcp-medusa",
+  "version": "1.0.0",
+  "description": "A simple MCP server for medusa",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "list-tools": "node index.js tools",
+    "build": "tsc",
+    "dev": "node mcpServer.js",
+    "mcp:stdio": "node mcpServer.js",
+    "dev:vercel": "vercel dev",
+    "start": "node mcpServer.js",
+    "test:http": "node test-http-transport.js",
+    "deploy": "vercel --prod",
+    "type-check": "tsc --noEmit",
+    "benchmark": "node benchmark/performance-test.js",
+    "load-test": "node benchmark/load-test.js",
+    "load-test:heavy": "node benchmark/load-test.js --concurrentUsers 20 --requestsPerUser 50 --delayMs 50",
+    "performance": "npm run benchmark && npm run load-test"
+  },
+  "dependencies": {
+    "@medusajs/medusa-js": "^6.1.10",
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7"
+  },
+  "engines": {
+    "npm": ">=8.0.0",
+    "node": ">=20.0.0"
+  },
+  "packageManager": "npm@10.8.1",
+  "author": "Postman, Inc.",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@vercel/node": "^5.3.13",
+    "typescript": "^5.9.2",
+    "vercel": "^46.0.2"
+  }
+}

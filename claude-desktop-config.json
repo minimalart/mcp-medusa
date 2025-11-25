@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "medusa-admin": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/client-http", "https://your-vercel-deployment.vercel.app/api/mcp"],
+      "env": {
+        "MCP_AUTH_TOKEN": "your-auth-token-here"
+      }
+    }
+  }
+}

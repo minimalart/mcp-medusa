@@ -1,0 +1,55 @@
+{
+  "buildCommand": "echo 'No build needed for API routes'",
+  "outputDirectory": ".",
+  "functions": {
+    "api/mcp/index.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
+    "api/mcp/tools.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
+    "api/mcp/capabilities.js": {
+      "maxDuration": 10,
+      "memory": 512
+    },
+    "api/mcp/metrics.js": {
+      "maxDuration": 10,
+      "memory": 512
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/mcp/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, s-maxage=60"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/mcp/(.*)",
+      "destination": "/api/mcp/$1"
+    }
+  ],
+  "regions": ["iad1", "sfo1"],
+  "env": {
+    "NODE_OPTIONS": "--max-old-space-size=1024 --optimize-for-size"
+  }
+}
