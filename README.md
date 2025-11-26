@@ -31,202 +31,59 @@ This MCP server provides **14 comprehensive admin tools** covering all major Med
 - ✅ **Full CRUD operations** for all major resources
 - ✅ **Advanced e-commerce operations** (fulfillment, order edits, promotions)
 - ✅ **MCP-compatible** for seamless AI assistant integration
+- ✅ **Zero installation required** - run directly with npx
 - ✅ **Comprehensive error handling** and validation
-- ✅ **Environment-based configuration**
-- ✅ **Docker deployment ready**
 
-## 🚦 Getting Started
+## 🚦 Quick Start
 
-### ⚙️ Prerequisites
+### Prerequisites
 
 - [Node.js v18+ (v20+ recommended)](https://nodejs.org/)
-- [npm](https://www.npmjs.com/) (included with Node)
 - **Running Medusa.js backend server**
-- **Medusa admin API key or JWT token**
+- **Medusa admin API key**
 
-### 📥 Download & Local Setup
+### Claude Desktop Configuration
 
-**1. Clone or Download the Repository**
+Add the following to your Claude Desktop configuration file:
 
-```bash
-# Clone from GitHub
-git clone https://github.com/your-username/mcp_medusa.git
-cd mcp_medusa
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
-# OR download and extract ZIP file
-wget https://github.com/your-username/mcp_medusa/archive/main.zip
-unzip main.zip
-cd mcp_medusa-main
+```json
+{
+  "mcpServers": {
+    "medusa-admin": {
+      "command": "npx",
+      "args": ["-y", "@minimalart/mcp-medusa"],
+      "env": {
+        "MEDUSA_BASE_URL": "http://localhost:9000",
+        "MEDUSA_API_KEY": "your_admin_api_key"
+      }
+    }
+  }
+}
 ```
 
-**2. Install dependencies**
+**Configuration options:**
 
-```bash
-npm install
-```
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MEDUSA_BASE_URL` | Your Medusa backend URL | `http://localhost:9000` or `https://api.mystore.com` |
+| `MEDUSA_API_KEY` | Admin API key or JWT token | `sk_admin_...` |
 
-**3. Configure environment variables**
+### Getting Your Medusa API Key
 
-Copy the example environment file and configure your Medusa settings:
+1. Access your Medusa Admin dashboard
+2. Go to **Settings** → **API Keys**
+3. Create a new API key with admin permissions
+4. Copy the key and add it to your configuration
 
-```bash
-cp env.example .env
-```
+### Verify Installation
 
-Update `.env` with your Medusa configuration:
-
-```env
-MEDUSA_BASE_URL=http://localhost:9000
-MEDUSA_API_KEY=your_admin_api_key_or_jwt_token
-```
-
-
-### 🏃‍♂️ Running the Server Locally
-
-#### Quick Start - Local Execution
-
-**1. Verify your setup:**
-```bash
-# Check if environment is configured
-cat .env
-
-# List available tools to verify installation
-npm run list-tools
-```
-
-**2. Start the MCP server:**
-
-**STDIO Mode (recommended for Claude Desktop):**
-```bash
-# Using npm script
-npm run dev
-
-# OR using node directly
-node mcpServer.js
-```
-
-**SSE Mode (for web-based clients):**
-```bash
-node mcpServer.js --sse
-```
-
-**3. Test the server:**
-```bash
-# Test connectivity to your Medusa backend
-node test-medusa-tools.js
-
-# Test MCP tools functionality
-node test-mcp-tools.js
-```
-
-**4. Verify server is running:**
-- **STDIO Mode**: Server will wait for JSON-RPC messages on stdin
-- **SSE Mode**: Server will show "MCP Server running on http://localhost:3000"
-
-#### Advanced Local Development
-
-**Vercel Local Development (with serverless functions):**
-```bash
-npm run dev:vercel
-# Server available at: http://localhost:3000/api/mcp
-```
-
-#### 🔧 Local Execution Troubleshooting
-
-**Common Issues:**
-
-1. **Missing environment variables:**
-   ```bash
-   # Error: MEDUSA_BASE_URL or MEDUSA_API_KEY not set
-   cp env.example .env
-   # Edit .env with your Medusa configuration
-   ```
-
-2. **Connection refused to Medusa backend:**
-   ```bash
-   # Verify Medusa server is running
-   curl http://localhost:9000/admin/auth
-   
-   # Check your MEDUSA_BASE_URL in .env
-   echo $MEDUSA_BASE_URL
-   ```
-
-3. **Permission denied errors:**
-   ```bash
-   # Verify API key has admin permissions
-   curl -H "Authorization: Bearer $MEDUSA_API_KEY" \
-        http://localhost:9000/admin/users/me
-   ```
-
-4. **Port conflicts:**
-   ```bash
-   # If port 3000 is in use (for SSE mode)
-   node mcpServer.js --sse --port 3001
-   ```
-
-#### ☁️ Vercel Deployment
-
-Deploy your MCP server to Vercel for serverless hosting:
-
-```bash
-# Deploy to Vercel
-vercel
-
-# Deploy to production
-vercel --prod
-```
-
-**Set environment variables in Vercel:**
-- `MEDUSA_BASE_URL` - Your Medusa backend URL  
-- `MEDUSA_API_KEY` - Your Medusa admin API key
-
-After deployment, your MCP server will be available at:
-```
-https://your-project.vercel.app/api/mcp
-```
-
-📖 **See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed Vercel deployment instructions.**
-
-## 🛠️ CLI Commands
-
-### List Available Tools
-View all available tools and their descriptions:
-
-```bash
-npm run list-tools
-# or
-node index.js tools
-```
-
-### Test Tools
-Run comprehensive tests on your Medusa tools:
-
-```bash
-node test-medusa-tools.js
-```
-
-## 🧪 Testing
-
-### MCP Inspector
-
-Test your MCP server using the official MCP Inspector:
-
-```bash
-# For local STDIO mode (IMPORTANT: Use direct node command, not npm scripts)
-npx @modelcontextprotocol/inspector@latest node mcpServer.js
-
-# For Vercel dev mode - requires 2 terminals:
-# Terminal 1: Start Vercel dev server
-npm run dev:vercel
-
-# Terminal 2: Connect MCP Inspector (after Vercel dev is running)
-npx @modelcontextprotocol/inspector@latest http://localhost:3000/api/mcp
-
-# For Vercel deployment (production)
-npx @modelcontextprotocol/inspector@latest https://your-project.vercel.app/api/mcp
-```
-
-**⚠️ Important**: When testing STDIO mode, always use `node mcpServer.js` directly, not `npm run dev`. npm scripts output additional text that interferes with JSON-RPC communication.
+After configuring Claude Desktop:
+1. Restart Claude Desktop completely
+2. Look for the MCP server indicator (hammer icon) in the chat interface
+3. The server should show a green status indicator when connected
 
 ## 🔧 Tool Examples
 
@@ -236,8 +93,7 @@ npx @modelcontextprotocol/inspector@latest https://your-project.vercel.app/api/m
 {
   "action": "list",
   "limit": 10,
-  "status": "pending",
-  "payment_status": "authorized"
+  "status": "pending"
 }
 
 // Get specific order
@@ -269,12 +125,6 @@ npx @modelcontextprotocol/inspector@latest https://your-project.vercel.app/api/m
   "description": "Product description",
   "handle": "new-product"
 }
-
-// Manage product variants
-{
-  "action": "list_variants",
-  "id": "prod_01234567890"
-}
 ```
 
 ### Customers Management
@@ -291,112 +141,6 @@ npx @modelcontextprotocol/inspector@latest https://your-project.vercel.app/api/m
   "email": "customer@example.com",
   "first_name": "John",
   "last_name": "Doe"
-}
-
-// Manage customer groups
-{
-  "action": "list_groups"
-}
-```
-
-## 🤖 Claude Desktop Integration
-
-### Step 1: Get Absolute Paths
-```bash
-# Get node path
-which node
-
-# Get server path
-realpath mcpServer.js
-```
-
-### Step 2: Configure Claude Desktop
-Open Claude Desktop → **Settings** → **Developers** → **Edit Config**:
-
-**Basic Configuration:**
-```json
-{
-  "mcpServers": {
-    "medusa-admin": {
-      "command": "/usr/local/bin/node",
-      "args": ["/absolute/path/to/your/mcpServer.js"]
-    }
-  }
-}
-```
-
-**With Environment Variables (recommended):**
-```json
-{
-  "mcpServers": {
-    "medusa-admin": {
-      "command": "/usr/local/bin/node",
-      "args": ["/absolute/path/to/your/mcpServer.js"],
-      "env": {
-        "MEDUSA_BASE_URL": "http://localhost:9000",
-        "MEDUSA_API_KEY": "your_admin_api_key_here"
-      }
-    }
-  }
-}
-```
-
-**Using .env file (most secure):**
-```json
-{
-  "mcpServers": {
-    "medusa-admin": {
-      "command": "/usr/local/bin/node",
-      "args": ["/absolute/path/to/your/mcpServer.js"],
-      "cwd": "/absolute/path/to/your/project/directory"
-    }
-  }
-}
-```
-
-### Step 3: Restart Claude Desktop
-Restart Claude Desktop and verify the MCP server shows a green status indicator.
-
-## 🐳 Docker Deployment
-
-### Build Image
-```bash
-docker build -t medusa-mcp .
-```
-
-### Run with Environment File
-```bash
-docker run -i --rm --env-file=.env medusa-mcp
-```
-
-### Claude Desktop Docker Configuration
-
-**Using .env file (recommended):**
-```json
-{
-  "mcpServers": {
-    "medusa-admin": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm", "--env-file=.env", "medusa-mcp"]
-    }
-  }
-}
-```
-
-**Using direct environment variables:**
-```json
-{
-  "mcpServers": {
-    "medusa-admin": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "-e", "MEDUSA_BASE_URL=http://localhost:9000",
-        "-e", "MEDUSA_API_KEY=your_admin_api_key_here",
-        "medusa-mcp"
-      ]
-    }
-  }
 }
 ```
 
@@ -419,33 +163,144 @@ docker run -i --rm --env-file=.env medusa-mcp
 | `manage_medusa_admin_sales_channels` | Sales channel management | `list`, `get`, `create`, `add_products` |
 | `manage_medusa_admin_users` | User & auth management | `list_users`, `list_invites`, `list_api_keys` |
 
+## 🧪 Testing with Claude
+
+Once configured, try these prompts with Claude:
+
+1. *"Show me the latest orders from my Medusa store"*
+2. *"Create a new product called 'Test Product' with a price of $29.99"*
+3. *"List the most recent customers and their details"*
+4. *"Check the inventory levels for all products"*
+5. *"Create a new customer group called 'VIP'"*
+
 ## 🔒 Security Best Practices
 
-- **Never commit `.env` files** - Add to `.gitignore`
+- **Never share your API keys** - Keep them secure and private
 - **Use HTTPS in production** - Configure `MEDUSA_BASE_URL` with HTTPS
 - **Rotate API keys regularly** - Generate new admin API keys periodically
 - **Limit API key permissions** - Use admin users with appropriate role restrictions
-- **Monitor API usage** - Track API calls and rate limits
 
-## 🧪 Testing
+---
 
-### Test Individual Tools
+# Development & Contributing
+
+The following sections are for developers who want to contribute to this project or run it locally for development purposes.
+
+## 📥 Local Development Setup
+
+**1. Clone the repository**
+
 ```bash
-# Test connectivity and basic operations
-node test-medusa-tools.js
+git clone https://github.com/minimalart/mcp-medusa.git
+cd mcp-medusa
+```
 
-# Test specific MCP tools
+**2. Install dependencies**
+
+```bash
+npm install
+```
+
+**3. Configure environment variables**
+
+```bash
+cp env.example .env
+```
+
+Update `.env` with your Medusa configuration:
+
+```env
+MEDUSA_BASE_URL=http://localhost:9000
+MEDUSA_API_KEY=your_admin_api_key_or_jwt_token
+```
+
+## 🏃‍♂️ Running Locally
+
+**STDIO Mode (for Claude Desktop testing):**
+```bash
+npm run dev
+# or
+node mcpServer.js
+```
+
+**SSE Mode (for web-based clients):**
+```bash
+node mcpServer.js --sse
+```
+
+**Vercel Local Development:**
+```bash
+npm run dev:vercel
+```
+
+## 🛠️ CLI Commands
+
+**List available tools:**
+```bash
+npm run list-tools
+```
+
+**Test Medusa connectivity:**
+```bash
+node test-medusa-tools.js
+```
+
+**Test MCP tools:**
+```bash
 node test-mcp-tools.js
 ```
 
-### Test with Claude
-1. Ask Claude to list your orders: *"Show me the latest orders from my Medusa store"*
-2. Create a new product: *"Create a new product called 'Test Product' with a price of $29.99"*
-3. Manage customers: *"List the most recent customers and their details"*
+## 🧪 Testing with MCP Inspector
 
-## 🛠️ Development
+```bash
+# STDIO mode
+npx @modelcontextprotocol/inspector@latest node mcpServer.js
 
-### Adding Custom Tools
+# Vercel dev mode (requires Vercel dev running)
+npx @modelcontextprotocol/inspector@latest http://localhost:3000/api/mcp
+```
+
+## 🐳 Docker
+
+**Build image:**
+```bash
+docker build -t medusa-mcp .
+```
+
+**Run with environment file:**
+```bash
+docker run -i --rm --env-file=.env medusa-mcp
+```
+
+## ☁️ Vercel Deployment
+
+```bash
+# Deploy to production
+vercel --prod
+```
+
+Set environment variables in Vercel dashboard:
+- `MEDUSA_BASE_URL`
+- `MEDUSA_API_KEY`
+
+## 📂 Project Structure
+
+```
+mcp-medusa/
+├── mcpServer.js              # Main MCP server (STDIO & SSE)
+├── lib/tools.js              # Tool discovery system
+├── tools/
+│   └── medusa-admin-api/     # All Medusa admin tools
+│       ├── medusa-admin-orders.js
+│       ├── medusa-admin-products.js
+│       ├── medusa-admin-customers.js
+│       └── ...
+├── index.js                  # CLI entry point
+└── commands/tools.js         # CLI tool listing command
+```
+
+## 🛠️ Adding New Tools
+
 1. Create new tool file in `tools/medusa-admin-api/`
 2. Follow the existing tool pattern:
    ```javascript
@@ -461,21 +316,6 @@ node test-mcp-tools.js
 3. Add tool path to `tools/paths.js`
 4. Test with `npm run list-tools`
 
-### Tool Structure
-Each tool follows a consistent pattern:
-- **Authentication** - Bearer token using `MEDUSA_API_KEY`
-- **Error handling** - Comprehensive error catching and reporting
-- **Parameter validation** - Required parameter checking
-- **Action routing** - Switch statement for different operations
-- **Response formatting** - Consistent JSON responses
-
-## 📚 Resources
-
-- **[Medusa.js Documentation](https://docs.medusajs.com/)** - Official Medusa documentation
-- **[Medusa Admin API Reference](https://docs.medusajs.com/api/admin)** - Complete API reference
-- **[Model Context Protocol](https://modelcontextprotocol.io/)** - MCP specification
-- **[Claude Desktop](https://claude.ai/desktop)** - AI assistant with MCP support
-
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -484,13 +324,20 @@ Each tool follows a consistent pattern:
 4. Test thoroughly: `npm run list-tools && node test-medusa-tools.js`
 5. Submit a pull request
 
+## 📚 Resources
+
+- **[Medusa.js Documentation](https://docs.medusajs.com/)** - Official Medusa documentation
+- **[Medusa Admin API Reference](https://docs.medusajs.com/api/admin)** - Complete API reference
+- **[Model Context Protocol](https://modelcontextprotocol.io/)** - MCP specification
+- **[Claude Desktop](https://claude.ai/desktop)** - AI assistant with MCP support
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 💬 Support
 
-- **Issues**: Open an issue on GitHub for bugs or feature requests
+- **Issues**: [Open an issue on GitHub](https://github.com/minimalart/mcp-medusa/issues)
 - **Documentation**: Check the Medusa.js documentation for API details
 - **Community**: Join the Medusa Discord community for general support
 

@@ -111,15 +111,19 @@ docker run -i --rm --env-file=.env medusa-mcp
 
 ## MCP Client Integration
 
-### Claude Desktop
+### Claude Desktop (Recommended - via npx)
 
-Add to Claude Desktop configuration:
+Add to Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
     "medusa-admin": {
-      "command": "node",
-      "args": ["/absolute/path/to/mcpServer.js"]
+      "command": "npx",
+      "args": ["-y", "@minimalart/mcp-medusa"],
+      "env": {
+        "MEDUSA_BASE_URL": "http://localhost:9000",
+        "MEDUSA_API_KEY": "your_admin_api_key"
+      }
     }
   }
 }
