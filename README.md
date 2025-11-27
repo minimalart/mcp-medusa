@@ -54,7 +54,7 @@ Add the following to your Claude Desktop configuration file:
   "mcpServers": {
     "medusa-admin": {
       "command": "npx",
-      "args": ["-y", "@minimalart/mcp-medusa"],
+      "args": ["-y", "mcp-medusa"],
       "env": {
         "MEDUSA_BASE_URL": "http://localhost:9000",
         "MEDUSA_API_KEY": "your_admin_api_key"

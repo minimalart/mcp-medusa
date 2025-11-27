@@ -1,6 +1,6 @@
 {
   "name": "mcp-medusa",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "MCP server for MedusaJS e-commerce backend operations",
   "main": "index.js",
   "bin": {
@@ -41,10 +41,10 @@
     "performance": "npm run benchmark && npm run load-test"
   },
   "dependencies": {
-    "@medusajs/medusa-js": "^6.1.10",
-    "@modelcontextprotocol/sdk": "^1.9.0",
-    "commander": "^13.1.0",
-    "dotenv": "^16.4.7"
+    "@medusajs/medusa-js": "6.1.10",
+    "@modelcontextprotocol/sdk": "1.9.0",
+    "commander": "13.1.0",
+    "dotenv": "16.4.7"
   },
   "engines": {
     "npm": ">=8.0.0",
@@ -58,5 +58,9 @@
     "@vercel/node": "^5.3.13",
     "typescript": "^5.9.2",
     "vercel": "^46.0.2"
+  }
+  ,
+  "publishConfig": {
+    "access": "public"
   }
 }
