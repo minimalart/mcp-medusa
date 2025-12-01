@@ -1,13 +1,14 @@
 {
   "name": "mcp-medusa",
-  "version": "1.0.3",
-  "description": "MCP server for MedusaJS e-commerce backend operations",
+  "version": "1.0.4",
+  "description": "MCP server for MedusaJS e-commerce backend operations. Supports local STDIO and remote Streamable HTTP transport.",
   "main": "index.js",
   "bin": {
     "mcp-medusa": "./mcpServer.js"
   },
   "files": [
     "mcpServer.js",
+    "server/",
     "tools/",
     "lib/",
     "env.example"
@@ -29,9 +30,12 @@
     "list-tools": "node index.js tools",
     "build": "tsc",
     "dev": "node mcpServer.js",
+    "dev:http": "node server/index.js",
     "mcp:stdio": "node mcpServer.js",
+    "mcp:http": "node server/index.js",
     "dev:vercel": "vercel dev",
     "start": "node mcpServer.js",
+    "start:http": "node server/index.js",
     "test:http": "node test-http-transport.js",
     "deploy": "vercel --prod",
     "type-check": "tsc --noEmit",
@@ -42,9 +46,11 @@
   },
   "dependencies": {
     "@medusajs/medusa-js": "6.1.10",
-    "@modelcontextprotocol/sdk": "1.9.0",
+    "@modelcontextprotocol/sdk": "^1.9.0",
     "commander": "13.1.0",
-    "dotenv": "16.4.7"
+    "cors": "^2.8.5",
+    "dotenv": "16.4.7",
+    "express": "^4.21.0"
   },
   "engines": {
     "npm": ">=8.0.0",

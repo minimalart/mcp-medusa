@@ -42,9 +42,20 @@ This MCP server provides **14 comprehensive admin tools** covering all major Med
 - **Running Medusa.js backend server**
 - **Medusa admin API key**
 
-### Claude Desktop Configuration
+### Usage Modes
 
-Add the following to your Claude Desktop configuration file:
+MCP Medusa supports **two transport modes**:
+
+| Mode | Transport | Use Case |
+|------|-----------|----------|
+| **Local** | STDIO | Direct IDE integration (npx) |
+| **Remote** | Streamable HTTP | Web apps, remote clients |
+
+---
+
+### Option 1: Local Mode (STDIO) - Recommended for IDEs
+
+Direct integration with Claude Desktop, Windsurf, Cursor, etc.
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -64,12 +75,73 @@ Add the following to your Claude Desktop configuration file:
 }
 ```
 
-**Configuration options:**
+---
+
+### Option 2: Remote Mode (HTTP) - For Web Apps
+
+Deploy to Digital Ocean, then connect from your web application.
+
+**1. Deploy to Digital Ocean:**
+```bash
+doctl apps create --spec deployment/digitalocean/app.yaml
+```
+
+**2. Configure secrets in DO Dashboard:**
+- `MEDUSA_BASE_URL` - Your Medusa backend URL
+- `MEDUSA_API_KEY` - Admin API key
+- `MCP_AUTH_TOKEN` - Secure token for authentication
+
+**3. Connect from your web app:**
+```javascript
+const response = await fetch('https://your-app.ondigitalocean.app/mcp', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_MCP_AUTH_TOKEN'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list'
+  })
+});
+```
+
+See [docs/REMOTE-SETUP.md](docs/REMOTE-SETUP.md) for complete remote setup guide.
+
+---
+
+### Option 3: Remote via mcp-remote (IDEs to Remote Server)
+
+Connect local IDEs to a remote MCP server using `mcp-remote`:
+
+```json
+{
+  "mcpServers": {
+    "medusa-remote": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "https://your-app.ondigitalocean.app/sse",
+        "--header", "Authorization:Bearer ${MCP_AUTH_TOKEN}"
+      ],
+      "env": {
+        "MCP_AUTH_TOKEN": "your_secure_token"
+      }
+    }
+  }
+}
+```
+
+---
+
+### Configuration Options
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `MEDUSA_BASE_URL` | Your Medusa backend URL | `http://localhost:9000` or `https://api.mystore.com` |
+| `MEDUSA_BASE_URL` | Your Medusa backend URL | `http://localhost:9000` |
 | `MEDUSA_API_KEY` | Admin API key or JWT token | `sk_admin_...` |
+| `MCP_AUTH_TOKEN` | Token for HTTP authentication (remote only) | `openssl rand -base64 32` |
 
 ### Getting Your Medusa API Key
 
@@ -223,9 +295,11 @@ npm run dev
 node mcpServer.js
 ```
 
-**SSE Mode (for web-based clients):**
+**HTTP Mode (for web apps and mcp-remote):**
 ```bash
-node mcpServer.js --sse
+npm run dev:http
+# or
+node server/index.js
 ```
 
 **Vercel Local Development:**
@@ -287,14 +361,27 @@ Set environment variables in Vercel dashboard:
 
 ```
 mcp-medusa/
-├── mcpServer.js              # Main MCP server (STDIO & SSE)
-├── lib/tools.js              # Tool discovery system
+├── mcpServer.js              # STDIO transport (local IDEs)
+├── server/
+│   ├── index.js              # HTTP transport (remote/web)
+│   ├── transports/
+│   │   └── streamable-http.js # Streamable HTTP implementation
+│   └── middleware/
+│       └── auth.js           # Bearer token authentication
+├── lib/
+│   ├── tools.js              # Tool discovery system
+│   └── constants.js          # Shared configuration
 ├── tools/
 │   └── medusa-admin-api/     # All Medusa admin tools
 │       ├── medusa-admin-orders.js
 │       ├── medusa-admin-products.js
 │       ├── medusa-admin-customers.js
 │       └── ...
+├── deployment/
+│   └── digitalocean/
+│       └── app.yaml          # DO App Platform config
+├── docs/
+│   └── REMOTE-SETUP.md       # Remote deployment guide
 ├── index.js                  # CLI entry point
 └── commands/tools.js         # CLI tool listing command
 ```
