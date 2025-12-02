@@ -16,14 +16,14 @@ services:
     # GitHub repository configuration
     github:
       repo: minimalart/mcp-medusa
-      branch: main
+      branch: feature/remote_refactor
       deploy_on_push: true
 
     # Build configuration
     build_command: npm ci
 
     # Run command - HTTP server for remote access
-    run_command: node server/index.js
+    run_command: npm run start:do
 
     # HTTP configuration
     http_port: 3000

@@ -36,6 +36,7 @@
     "dev:vercel": "vercel dev",
     "start": "node mcpServer.js",
     "start:http": "node server/index.js",
+    "start:do": "node server/index.js",
     "test:http": "node test-http-transport.js",
     "deploy": "vercel --prod",
     "type-check": "tsc --noEmit",
