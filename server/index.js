@@ -96,21 +96,35 @@ app.all('/mcp', authMiddleware, async (req, res) => {
 
 // Legacy SSE endpoint for mcp-remote compatibility
 app.get('/sse', authMiddleware, async (req, res) => {
-  // Redirect to Streamable HTTP
+  const connectionId = Date.now().toString(36);
+  console.log(`[SSE] Connection opened: ${connectionId}`);
+
+  // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
-  // Send endpoint information
-  res.write(`event: endpoint\ndata: ${JSON.stringify({ uri: '/mcp' })}\n\n`);
+  // Flush headers immediately
+  res.flushHeaders();
 
-  // Keep connection alive
+  // Send initial comment to confirm connection
+  res.write(':ok\n\n');
+  console.log(`[SSE] Sent :ok to ${connectionId}`);
+
+  // Send endpoint information for mcp-remote
+  res.write(`event: endpoint\ndata: ${JSON.stringify({ uri: '/message' })}\n\n`);
+  console.log(`[SSE] Sent endpoint event to ${connectionId}`);
+
+  // Keep connection alive every 15 seconds (DO timeout is ~60s)
   const keepAlive = setInterval(() => {
-    res.write(': keepalive\n\n');
-  }, 30000);
+    res.write(':keepalive\n\n');
+    console.log(`[SSE] Keepalive sent to ${connectionId}`);
+  }, 15000);
 
   req.on('close', () => {
     clearInterval(keepAlive);
+    console.log(`[SSE] Connection closed: ${connectionId}`);
   });
 });
 
