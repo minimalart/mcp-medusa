@@ -94,10 +94,13 @@ app.all('/mcp', authMiddleware, async (req, res) => {
   await mcpHandler.handleRequest(req, res);
 });
 
-// Legacy SSE endpoint for mcp-remote compatibility
+// Store active SSE connections for legacy mcp-remote protocol
+const sseConnections = new Map();
+
+// Legacy SSE endpoint for mcp-remote compatibility (protocol 2024-11-05)
 app.get('/sse', authMiddleware, async (req, res) => {
-  const connectionId = Date.now().toString(36);
-  console.log(`[SSE] Connection opened: ${connectionId}`);
+  const sessionId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+  console.log(`[SSE] Connection opened: ${sessionId}`);
 
   // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
@@ -110,27 +113,124 @@ app.get('/sse', authMiddleware, async (req, res) => {
 
   // Send initial comment to confirm connection
   res.write(':ok\n\n');
-  console.log(`[SSE] Sent :ok to ${connectionId}`);
+  console.log(`[SSE] Sent :ok to ${sessionId}`);
 
-  // Send endpoint information for mcp-remote
-  res.write(`event: endpoint\ndata: ${JSON.stringify({ uri: '/message' })}\n\n`);
-  console.log(`[SSE] Sent endpoint event to ${connectionId}`);
+  // Send endpoint event with session ID in the URL (mcp-remote protocol)
+  const messagesEndpoint = `/messages?sessionId=${sessionId}`;
+  res.write(`event: endpoint\ndata: ${messagesEndpoint}\n\n`);
+  console.log(`[SSE] Sent endpoint event to ${sessionId}: ${messagesEndpoint}`);
+
+  // Store connection for sending responses
+  sseConnections.set(sessionId, {
+    res,
+    sendMessage: (data) => {
+      res.write(`event: message\ndata: ${JSON.stringify(data)}\n\n`);
+    }
+  });
 
   // Keep connection alive every 15 seconds (DO timeout is ~60s)
   const keepAlive = setInterval(() => {
     res.write(':keepalive\n\n');
-    console.log(`[SSE] Keepalive sent to ${connectionId}`);
   }, 15000);
 
   req.on('close', () => {
     clearInterval(keepAlive);
-    console.log(`[SSE] Connection closed: ${connectionId}`);
+    sseConnections.delete(sessionId);
+    console.log(`[SSE] Connection closed: ${sessionId}`);
   });
 });
 
-// Legacy message endpoint for mcp-remote compatibility
+// Legacy messages endpoint for mcp-remote compatibility (protocol 2024-11-05)
+// mcp-remote sends requests here and expects responses via SSE
+app.post('/messages', authMiddleware, async (req, res) => {
+  const sessionId = req.query.sessionId;
+  console.log(`[Messages] Received request for session: ${sessionId}`);
+  console.log(`[Messages] Body:`, JSON.stringify(req.body));
+
+  const connection = sseConnections.get(sessionId);
+
+  if (!connection) {
+    console.log(`[Messages] No active SSE connection for session: ${sessionId}`);
+    return res.status(400).json({
+      error: 'No active SSE connection',
+      message: 'Please connect to /sse first'
+    });
+  }
+
+  try {
+    // Process the JSON-RPC request
+    const jsonRpcRequest = req.body;
+    let result;
+
+    if (jsonRpcRequest.method === 'initialize') {
+      result = {
+        protocolVersion: '2024-11-05',
+        serverInfo: {
+          name: SERVER_INFO.name,
+          version: '1.0.4'
+        },
+        capabilities: {
+          tools: {}
+        }
+      };
+    } else if (jsonRpcRequest.method === 'tools/list') {
+      const tools = await discoverTools();
+      const mcpTools = await transformToolsToMcp(tools);
+      result = { tools: mcpTools };
+    } else if (jsonRpcRequest.method === 'tools/call') {
+      const { name, arguments: args } = jsonRpcRequest.params;
+      const toolResult = await executeToolOptimized(name, args);
+      result = {
+        content: [{
+          type: 'text',
+          text: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult, null, 2)
+        }]
+      };
+    } else if (jsonRpcRequest.method === 'ping') {
+      result = { pong: true };
+    } else if (jsonRpcRequest.method === 'notifications/initialized') {
+      // Client notification, no response needed
+      res.status(202).send('Accepted');
+      return;
+    } else {
+      throw new Error(`Unknown method: ${jsonRpcRequest.method}`);
+    }
+
+    // Build JSON-RPC response
+    const response = {
+      jsonrpc: '2.0',
+      id: jsonRpcRequest.id,
+      result
+    };
+
+    // Send response via SSE stream
+    connection.sendMessage(response);
+    console.log(`[Messages] Sent response via SSE for session: ${sessionId}`);
+
+    // Acknowledge receipt to the POST request
+    res.status(202).send('Accepted');
+
+  } catch (error) {
+    console.error(`[Messages] Error processing request:`, error);
+
+    // Send error via SSE
+    const errorResponse = {
+      jsonrpc: '2.0',
+      id: req.body?.id,
+      error: {
+        code: -32603,
+        message: error.message
+      }
+    };
+    connection.sendMessage(errorResponse);
+
+    res.status(202).send('Accepted');
+  }
+});
+
+// Keep legacy /message endpoint for backwards compatibility
 app.post('/message', authMiddleware, async (req, res) => {
-  // Handle as regular MCP request
+  // Handle as regular MCP request (direct response)
   await mcpHandler.handleRequest(req, res);
 });
 
