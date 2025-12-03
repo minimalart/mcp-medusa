@@ -116,7 +116,9 @@ app.get('/sse', authMiddleware, async (req, res) => {
   console.log(`[SSE] Sent :ok to ${sessionId}`);
 
   // Send endpoint event with session ID in the URL (mcp-remote protocol)
-  const messagesEndpoint = `/messages?sessionId=${sessionId}`;
+  // Format: absolute URL that mcp-remote will use to POST messages
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const messagesEndpoint = `${baseUrl}/messages?sessionId=${sessionId}`;
   res.write(`event: endpoint\ndata: ${messagesEndpoint}\n\n`);
   console.log(`[SSE] Sent endpoint event to ${sessionId}: ${messagesEndpoint}`);
 
