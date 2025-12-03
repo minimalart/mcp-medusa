@@ -125,9 +125,7 @@ doctl apps create-deployment <app-id>
 |----------|--------|------|-------------|
 | `/health` | GET | No | Liveness check |
 | `/ready` | GET | No | Readiness check |
-| `/mcp` | POST | Bearer | MCP JSON-RPC |
-| `/sse` | GET | Bearer | Legacy SSE for mcp-remote |
-| `/message` | POST | Bearer | Legacy message for mcp-remote |
+| `/mcp` | POST | Bearer | MCP JSON-RPC (Streamable HTTP) |
 
 ---
 
@@ -236,7 +234,7 @@ Best for: Using local IDE (Claude Desktop, Windsurf) with a remote MCP server.
       "command": "npx",
       "args": [
         "-y", "mcp-remote",
-        "https://your-app.ondigitalocean.app/sse",
+        "https://your-app.ondigitalocean.app/mcp",
         "--header", "Authorization:Bearer ${MCP_AUTH_TOKEN}"
       ],
       "env": {

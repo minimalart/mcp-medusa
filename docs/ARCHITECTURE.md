@@ -225,7 +225,6 @@ Client Request
 
 - HTTP request timeout: 30 seconds (configurable in DO)
 - Tool execution timeout: 30 seconds
-- SSE keepalive: 30 seconds
 
 ### Memory
 
@@ -277,3 +276,4 @@ npm run dev:http
 | 1.0.0 | Initial release with STDIO transport |
 | 1.0.3 | Added Vercel HTTP support |
 | 1.0.4 | Added Streamable HTTP, Digital Ocean support, mcp-remote compatibility |
+| 1.0.5 | Removed legacy SSE transport, simplified to Streamable HTTP only |

@@ -207,9 +207,7 @@ console.log('Orders:', JSON.parse(result.content[0].text));
 |----------|--------|------|-------------|
 | `/health` | GET | No | Liveness check |
 | `/ready` | GET | No | Readiness check (shows tools count) |
-| `/mcp` | POST | Bearer | Main MCP JSON-RPC endpoint |
-| `/sse` | GET | Bearer | SSE stream for mcp-remote |
-| `/message` | POST | Bearer | Message endpoint for mcp-remote |
+| `/mcp` | POST | Bearer | Main MCP JSON-RPC endpoint (Streamable HTTP) |
 
 ---
 
@@ -217,7 +215,7 @@ console.log('Orders:', JSON.parse(result.content[0].text));
 
 **Best for:** Teams where multiple developers need to share a single MCP server deployment, or when you want IDE access to a remote Medusa instance.
 
-This uses the `mcp-remote` package to bridge local STDIO-based IDEs to a remote HTTP server.
+This uses the `mcp-remote` package to bridge local STDIO-based IDEs to a remote HTTP server using Streamable HTTP transport.
 
 ### Prerequisites
 
@@ -235,7 +233,7 @@ This uses the `mcp-remote` package to bridge local STDIO-based IDEs to a remote 
       "command": "npx",
       "args": [
         "-y", "mcp-remote",
-        "https://your-app.ondigitalocean.app/sse",
+        "https://your-app.ondigitalocean.app/mcp",
         "--header", "Authorization:Bearer ${MCP_AUTH_TOKEN}"
       ],
       "env": {
@@ -257,7 +255,7 @@ This uses the `mcp-remote` package to bridge local STDIO-based IDEs to a remote 
       "command": "npx",
       "args": [
         "-y", "mcp-remote",
-        "https://your-app.ondigitalocean.app/sse",
+        "https://your-app.ondigitalocean.app/mcp",
         "--header", "Authorization:Bearer ${MCP_AUTH_TOKEN}"
       ],
       "env": {
@@ -279,7 +277,7 @@ This uses the `mcp-remote` package to bridge local STDIO-based IDEs to a remote 
       "command": "npx",
       "args": [
         "-y", "mcp-remote",
-        "https://your-app.ondigitalocean.app/sse",
+        "https://your-app.ondigitalocean.app/mcp",
         "--header", "Authorization:Bearer ${MCP_AUTH_TOKEN}"
       ],
       "env": {
@@ -304,7 +302,7 @@ This uses the `mcp-remote` package to bridge local STDIO-based IDEs to a remote 
 ```
 
 1. Your IDE spawns `mcp-remote` as a local process
-2. `mcp-remote` connects to the remote MCP server via SSE
+2. `mcp-remote` connects to the remote MCP server via Streamable HTTP
 3. Commands from the IDE are forwarded to the remote server
 4. Responses are returned back through the bridge
 

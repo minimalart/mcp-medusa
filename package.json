@@ -1,6 +1,6 @@
 {
   "name": "mcp-medusa",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "MCP server for MedusaJS e-commerce backend operations. Supports local STDIO and remote Streamable HTTP transport.",
   "main": "index.js",
   "bin": {

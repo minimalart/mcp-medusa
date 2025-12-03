@@ -12,7 +12,7 @@ GET /health
 ```json
 {
   "status": "ok",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "transport": "streamable-http",
   "protocolVersion": "2025-03-26"
 }
