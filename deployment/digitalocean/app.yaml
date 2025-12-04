@@ -1,0 +1,78 @@
+# Digital Ocean App Platform Configuration for MCP Medusa
+#
+# Deploy with:
+#   doctl apps create --spec deployment/digitalocean/app.yaml
+#
+# Update with:
+#   doctl apps update <app-id> --spec deployment/digitalocean/app.yaml
+#
+# Or deploy via Digital Ocean Dashboard by importing this file.
+
+name: mcp-medusa
+region: nyc
+
+services:
+  - name: mcp-server
+    # GitHub repository configuration
+    github:
+      repo: minimalart/mcp-medusa
+      branch: feature/remote_refactor
+      deploy_on_push: true
+
+    # Build configuration
+    build_command: npm ci
+
+    # Run command - HTTP server for remote access
+    run_command: npm run start:do
+
+    # HTTP configuration
+    http_port: 3000
+
+    # Instance configuration
+    instance_count: 1
+    instance_size_slug: basic-xs  # $5/month - 512MB RAM, 1 vCPU
+    # Scale up options:
+    # - basic-s:  $12/month - 1GB RAM, 1 vCPU
+    # - basic-m:  $24/month - 2GB RAM, 1 vCPU
+    # - professional-xs: $25/month - 1GB RAM, 1 vCPU (dedicated)
+
+    # Health checks
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 10
+      period_seconds: 30
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+
+    # Environment variables
+    envs:
+      - key: NODE_ENV
+        value: production
+
+      # Port is automatically set by App Platform
+      - key: PORT
+        value: "3000"
+
+      # Medusa backend configuration (set as secrets)
+      - key: MEDUSA_BASE_URL
+        scope: RUN_TIME
+        type: SECRET
+
+      - key: MEDUSA_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+
+      # MCP authentication token (set as secret)
+      - key: MCP_AUTH_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+
+    # Routes (optional - for custom domain)
+    # routes:
+    #   - path: /
+
+# Alerts (optional)
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED

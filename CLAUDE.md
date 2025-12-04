@@ -6,14 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Medusa.js MCP (Model Context Protocol) server that provides automated API tools for Medusa e-commerce backend operations. It focuses on admin API functionality including order management, cart operations, and fulfillment processing.
 
+**Version:** 1.0.4
+**Supports:** Local STDIO (npx) and Remote Streamable HTTP (Digital Ocean)
+
 ## Architecture
+
+### Transport Modes
+
+| Mode | Entry Point | Protocol | Use Case |
+|------|-------------|----------|----------|
+| STDIO | `mcpServer.js` | MCP 2024-11-05 | Local IDEs (npx) |
+| HTTP | `server/index.js` | MCP 2025-03-26 (Streamable HTTP) | Remote/Web apps |
+| Vercel | `api/mcp/index.js` | JSON-RPC over HTTP | Serverless |
 
 ### Core Components
 
-- **mcpServer.js**: Main MCP server implementation using @modelcontextprotocol/sdk
-  - Supports both STDIO and SSE (Server-Sent Events) transport modes
-  - Handles tool discovery, validation, and execution
-  - Transforms tools into MCP-compatible format
+- **mcpServer.js**: STDIO transport for local IDE integration
+  - Uses `@modelcontextprotocol/sdk` StdioServerTransport
+  - Entry point for `npx mcp-medusa`
+
+- **server/index.js**: HTTP transport for remote access
+  - Implements Streamable HTTP (MCP 2025-03-26)
+  - Supports mcp-remote clients
+  - Bearer token authentication
 
 - **lib/tools.js**: Tool discovery system that dynamically loads tools from the `tools/` directory
 - **tools/paths.js**: Configuration file listing all available tool paths
@@ -56,14 +71,25 @@ Medusa Admin Tools use Bearer token authentication:
 
 ### Running the Server
 
-**Vercel Deployment (recommended):**
+**STDIO Mode (local IDE integration):**
 ```bash
-npx vercel --prod
+npm run dev
+# or
+node mcpServer.js
 ```
 
-**Local Development:**
+**HTTP Mode (remote/web apps):**
 ```bash
-npx vercel dev
+npm run dev:http
+# or
+node server/index.js
+```
+
+**Vercel (serverless):**
+```bash
+npm run dev:vercel
+# or
+vercel --prod
 ```
 
 ### Tool Management
@@ -82,12 +108,26 @@ Copy `env.example` to `.env` and configure:
 cp env.example .env
 ```
 
+**Required variables:**
+- `MEDUSA_BASE_URL` - Medusa backend URL
+- `MEDUSA_API_KEY` - Admin API key
+- `MCP_AUTH_TOKEN` - Bearer token for HTTP auth (remote only)
+
 ### Testing
 
 Test Medusa tools:
 ```bash
 node test-mcp-tools.js
 node test-medusa-tools.js
+```
+
+Test HTTP server:
+```bash
+curl http://localhost:3000/health
+curl -X POST http://localhost:3000/mcp \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
 ## Adding New Tools
@@ -111,7 +151,7 @@ docker run -i --rm --env-file=.env medusa-mcp
 
 ## MCP Client Integration
 
-### Claude Desktop (Recommended - via npx)
+### Option 1: Local STDIO (via npx)
 
 Add to Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
@@ -119,7 +159,7 @@ Add to Claude Desktop configuration (`~/Library/Application Support/Claude/claud
   "mcpServers": {
     "medusa-admin": {
       "command": "npx",
-      "args": ["-y", "@minimalart/mcp-medusa"],
+      "args": ["-y", "mcp-medusa"],
       "env": {
         "MEDUSA_BASE_URL": "http://localhost:9000",
         "MEDUSA_API_KEY": "your_admin_api_key"
@@ -129,9 +169,47 @@ Add to Claude Desktop configuration (`~/Library/Application Support/Claude/claud
 }
 ```
 
+### Option 2: Remote via mcp-remote
+
+Connect local IDE to remote server:
+```json
+{
+  "mcpServers": {
+    "medusa-remote": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "https://your-app.ondigitalocean.app/sse",
+        "--header", "Authorization:Bearer ${MCP_AUTH_TOKEN}"
+      ],
+      "env": {
+        "MCP_AUTH_TOKEN": "your_token"
+      }
+    }
+  }
+}
+```
+
+### Option 3: HTTP Direct (Web Apps)
+
+```javascript
+const response = await fetch('https://your-app.ondigitalocean.app/mcp', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer YOUR_TOKEN'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list'
+  })
+});
+```
+
 ### Requirements
 
-- Node.js v18+ (for fetch API support)
+- Node.js v20+ (for fetch API support)
 - Medusa backend server running
 - Admin API key or valid JWT token
 - Appropriate admin permissions for all e-commerce operations

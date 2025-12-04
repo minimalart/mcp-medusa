@@ -42,9 +42,25 @@ This MCP server provides **14 comprehensive admin tools** covering all major Med
 - **Running Medusa.js backend server**
 - **Medusa admin API key**
 
-### Claude Desktop Configuration
+### Usage Modes
 
-Add the following to your Claude Desktop configuration file:
+MCP Medusa supports **three usage modes**:
+
+| Mode | Transport | Use Case | Best For |
+|------|-----------|----------|----------|
+| **Local** | STDIO | Direct IDE integration (npx) | Individual developers |
+| **Remote HTTP** | Streamable HTTP | Web apps with LLM integration | Production web apps |
+| **Remote via mcp-remote** | STDIO → HTTP bridge | IDEs connecting to remote server | Teams sharing one deployment |
+
+---
+
+## Option 1: Local Mode (STDIO)
+
+**Best for:** Individual developers using Claude Desktop, Windsurf, Cursor, or other MCP-compatible IDEs.
+
+Direct integration running locally via npx - no server deployment needed.
+
+### Claude Desktop Configuration
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -64,12 +80,248 @@ Add the following to your Claude Desktop configuration file:
 }
 ```
 
-**Configuration options:**
+### Windsurf Configuration
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `MEDUSA_BASE_URL` | Your Medusa backend URL | `http://localhost:9000` or `https://api.mystore.com` |
-| `MEDUSA_API_KEY` | Admin API key or JWT token | `sk_admin_...` |
+**Location**: `~/.codeium/windsurf/mcp_config.json`
+
+```json
+{
+  "mcpServers": {
+    "medusa-admin": {
+      "command": "npx",
+      "args": ["-y", "mcp-medusa"],
+      "env": {
+        "MEDUSA_BASE_URL": "http://localhost:9000",
+        "MEDUSA_API_KEY": "your_admin_api_key"
+      }
+    }
+  }
+}
+```
+
+---
+
+## Option 2: Remote Mode (HTTP) - For Web Apps
+
+**Best for:** Web applications integrated with LLMs that need to access Medusa operations programmatically.
+
+Deploy to Digital Ocean App Platform, then connect from your web application via HTTP.
+
+### Step 1: Deploy to Digital Ocean
+
+```bash
+# Install doctl CLI
+brew install doctl  # macOS
+snap install doctl  # Linux
+
+# Authenticate
+doctl auth init
+
+# Create app (requires GitHub connection in DO Dashboard first)
+doctl apps create --spec deployment/digitalocean/app.yaml
+```
+
+### Step 2: Configure Secrets in DO Dashboard
+
+Go to **Apps > mcp-medusa > Settings > App-Level Environment Variables** and add:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `MEDUSA_BASE_URL` | Secret | Your Medusa backend URL (e.g., `https://api.mystore.com`) |
+| `MEDUSA_API_KEY` | Secret | Medusa admin API key |
+| `MCP_AUTH_TOKEN` | Secret | Generate with `openssl rand -base64 32` |
+
+### Step 3: Connect from Your Web App
+
+**Initialize session:**
+```javascript
+const MCP_URL = 'https://your-app.ondigitalocean.app/mcp';
+const AUTH_TOKEN = 'your_mcp_auth_token';
+
+// Initialize MCP session
+const initResponse = await fetch(MCP_URL, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${AUTH_TOKEN}`
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: {
+      clientInfo: { name: 'my-web-app', version: '1.0.0' }
+    }
+  })
+});
+```
+
+**List available tools:**
+```javascript
+const toolsResponse = await fetch(MCP_URL, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${AUTH_TOKEN}`
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/list'
+  })
+});
+
+const { result } = await toolsResponse.json();
+console.log('Available tools:', result.tools);
+```
+
+**Execute a tool:**
+```javascript
+const ordersResponse = await fetch(MCP_URL, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${AUTH_TOKEN}`
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 3,
+    method: 'tools/call',
+    params: {
+      name: 'manage_medusa_admin_orders',
+      arguments: {
+        action: 'list',
+        limit: 10
+      }
+    }
+  })
+});
+
+const { result } = await ordersResponse.json();
+console.log('Orders:', JSON.parse(result.content[0].text));
+```
+
+### HTTP Endpoints Reference
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/health` | GET | No | Liveness check |
+| `/ready` | GET | No | Readiness check (shows tools count) |
+| `/mcp` | POST | Bearer | Main MCP JSON-RPC endpoint (Streamable HTTP) |
+
+---
+
+## Option 3: Remote via mcp-remote (IDEs to Remote Server)
+
+**Best for:** Teams where multiple developers need to share a single MCP server deployment, or when you want IDE access to a remote Medusa instance.
+
+This uses the `mcp-remote` package to bridge local STDIO-based IDEs to a remote HTTP server using Streamable HTTP transport.
+
+### Prerequisites
+
+1. MCP Medusa deployed to Digital Ocean (see Option 2)
+2. `MCP_AUTH_TOKEN` configured in the deployment
+
+### Claude Desktop Configuration
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "medusa-remote": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "https://your-app.ondigitalocean.app/mcp",
+        "--header", "Authorization:Bearer ${MCP_AUTH_TOKEN}"
+      ],
+      "env": {
+        "MCP_AUTH_TOKEN": "your_secure_token_here"
+      }
+    }
+  }
+}
+```
+
+### Windsurf Configuration
+
+**Location**: `~/.codeium/windsurf/mcp_config.json`
+
+```json
+{
+  "mcpServers": {
+    "medusa-remote": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "https://your-app.ondigitalocean.app/mcp",
+        "--header", "Authorization:Bearer ${MCP_AUTH_TOKEN}"
+      ],
+      "env": {
+        "MCP_AUTH_TOKEN": "your_secure_token_here"
+      }
+    }
+  }
+}
+```
+
+### Cursor Configuration
+
+**Location**: Cursor Settings > MCP Servers
+
+```json
+{
+  "mcpServers": {
+    "medusa-remote": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "https://your-app.ondigitalocean.app/mcp",
+        "--header", "Authorization:Bearer ${MCP_AUTH_TOKEN}"
+      ],
+      "env": {
+        "MCP_AUTH_TOKEN": "your_secure_token_here"
+      }
+    }
+  }
+}
+```
+
+### How mcp-remote Works
+
+```
+┌─────────────────┐     STDIO      ┌─────────────────┐     HTTPS     ┌─────────────────┐
+│  Claude Desktop │ ◄────────────► │   mcp-remote    │ ◄───────────► │  MCP Medusa     │
+│  Windsurf       │                │   (npx bridge)  │               │  (Digital Ocean)│
+│  Cursor         │                └─────────────────┘               └────────┬────────┘
+└─────────────────┘                                                           │
+                                                                     ┌────────▼────────┐
+                                                                     │  Medusa Backend │
+                                                                     └─────────────────┘
+```
+
+1. Your IDE spawns `mcp-remote` as a local process
+2. `mcp-remote` connects to the remote MCP server via Streamable HTTP
+3. Commands from the IDE are forwarded to the remote server
+4. Responses are returned back through the bridge
+
+### Advantages of mcp-remote
+
+- **Shared deployment**: Multiple team members use the same MCP server
+- **Centralized Medusa access**: One secure connection to your Medusa backend
+- **No local credentials**: API keys stay on the server, only auth token needed locally
+- **Works with any MCP-compatible IDE**: Claude Desktop, Windsurf, Cursor, etc.
+
+---
+
+## Configuration Reference
+
+| Variable | Required | Mode | Description | Example |
+|----------|----------|------|-------------|---------|
+| `MEDUSA_BASE_URL` | Yes | All | Your Medusa backend URL | `http://localhost:9000` |
+| `MEDUSA_API_KEY` | Yes | All | Admin API key or JWT token | `sk_admin_...` |
+| `MCP_AUTH_TOKEN` | Remote only | HTTP | Token for client authentication | `openssl rand -base64 32` |
 
 ### Getting Your Medusa API Key
 
@@ -223,9 +475,11 @@ npm run dev
 node mcpServer.js
 ```
 
-**SSE Mode (for web-based clients):**
+**HTTP Mode (for web apps and mcp-remote):**
 ```bash
-node mcpServer.js --sse
+npm run dev:http
+# or
+node server/index.js
 ```
 
 **Vercel Local Development:**
@@ -287,14 +541,27 @@ Set environment variables in Vercel dashboard:
 
 ```
 mcp-medusa/
-├── mcpServer.js              # Main MCP server (STDIO & SSE)
-├── lib/tools.js              # Tool discovery system
+├── mcpServer.js              # STDIO transport (local IDEs)
+├── server/
+│   ├── index.js              # HTTP transport (remote/web)
+│   ├── transports/
+│   │   └── streamable-http.js # Streamable HTTP implementation
+│   └── middleware/
+│       └── auth.js           # Bearer token authentication
+├── lib/
+│   ├── tools.js              # Tool discovery system
+│   └── constants.js          # Shared configuration
 ├── tools/
 │   └── medusa-admin-api/     # All Medusa admin tools
 │       ├── medusa-admin-orders.js
 │       ├── medusa-admin-products.js
 │       ├── medusa-admin-customers.js
 │       └── ...
+├── deployment/
+│   └── digitalocean/
+│       └── app.yaml          # DO App Platform config
+├── docs/
+│   └── REMOTE-SETUP.md       # Remote deployment guide
 ├── index.js                  # CLI entry point
 └── commands/tools.js         # CLI tool listing command
 ```
