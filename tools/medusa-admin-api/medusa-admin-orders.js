@@ -5,6 +5,21 @@
 
 import { Buffer } from "buffer";
 
+// Valid query parameters for Medusa v2 Admin Orders API
+const VALID_LIST_ORDER_PARAMS = [
+  'id',
+  'limit',
+  'offset',
+  'order',
+  'fields',
+  'sales_channel_id',
+  'customer_id',
+  'region_id',
+  'created_at',
+  'updated_at',
+  'status'
+];
+
 // Utility function to normalize base URL by removing trailing slashes
 function normalizeBaseUrl(url) {
   return url.endsWith('/') ? url.slice(0, -1) : url;
@@ -42,22 +57,20 @@ async function makeRequest(url, options = {}) {
 
 /**
  * Function to list orders with filtering and pagination.
+ * Only valid Medusa v2 query parameters are forwarded to the API.
  *
  * @param {Object} args - Arguments for listing orders.
+ * @param {string} [args.id] - Filter by order ID.
  * @param {number} [args.limit=20] - Maximum number of orders to return.
  * @param {number} [args.offset=0] - Number of orders to skip.
- * @param {string} [args.status] - Filter by order status.
- * @param {string} [args.fulfillment_status] - Filter by fulfillment status.
- * @param {string} [args.payment_status] - Filter by payment status.
- * @param {string} [args.display_id] - Filter by display ID.
- * @param {string} [args.cart_id] - Filter by cart ID.
+ * @param {string} [args.order] - Sort field (prefix with "-" for descending).
+ * @param {string} [args.fields] - Comma-separated fields to include.
+ * @param {string} [args.sales_channel_id] - Filter by sales channel ID.
  * @param {string} [args.customer_id] - Filter by customer ID.
- * @param {string} [args.email] - Filter by customer email.
  * @param {string} [args.region_id] - Filter by region ID.
- * @param {string} [args.currency_code] - Filter by currency code.
- * @param {string} [args.tax_rate] - Filter by tax rate.
  * @param {string} [args.created_at] - Filter by creation date.
  * @param {string} [args.updated_at] - Filter by update date.
+ * @param {string} [args.status] - Filter by order status.
  * @returns {Promise<Object>} - The result of the orders listing.
  */
 const listOrders = async (args = {}) => {
@@ -72,10 +85,10 @@ const listOrders = async (args = {}) => {
   //console.log(`api key: ${apiKey}`)
   try {
     const url = new URL(`${baseUrl}/admin/orders`);
-    
-    // Add query parameters
+
+    // Add only valid Medusa v2 query parameters (filter out invalid ones like 'locale')
     Object.keys(args).forEach(key => {
-      if (args[key] !== undefined && args[key] !== null) {
+      if (VALID_LIST_ORDER_PARAMS.includes(key) && args[key] !== undefined && args[key] !== null) {
         url.searchParams.append(key, args[key]);
       }
     });
@@ -84,7 +97,7 @@ const listOrders = async (args = {}) => {
       method: 'GET',
       headers: createHeaders(apiKey)
     });
-    
+
     return data;
   } catch (error) {
     console.error('Error listing orders:', error);
@@ -387,7 +400,7 @@ const executeFunction = async (args) => {
 const apiTool = {
   definition: {
     name: 'manage_medusa_admin_orders',
-    description: 'Comprehensive Medusa Admin order management tool supporting order operations (list, get, cancel, complete, archive, transfer, and fulfillment management).',
+    description: 'Comprehensive Medusa Admin order management tool supporting order operations (list, get, cancel, complete, archive, transfer, and fulfillment management). Compatible with Medusa v2 API.',
     parameters: {
         type: 'object',
         properties: {
@@ -401,7 +414,7 @@ const apiTool = {
             type: 'string',
             description: 'Order ID (required for get, cancel, complete, archive, transfer, list_fulfillments, cancel_fulfillment actions).'
           },
-          // List parameters
+          // List parameters (Medusa v2 valid filters)
           limit: {
             type: 'number',
             description: 'Maximum number of orders to return (default: 20).'
@@ -410,53 +423,37 @@ const apiTool = {
             type: 'number',
             description: 'Number of orders to skip (default: 0).'
           },
+          order: {
+            type: 'string',
+            description: 'Sort field. Prefix with "-" for descending order (e.g., "-created_at").'
+          },
+          fields: {
+            type: 'string',
+            description: 'Comma-separated fields to include in response (e.g., "id,status,total").'
+          },
           status: {
             type: 'string',
             description: 'Filter by order status.'
           },
-          fulfillment_status: {
-            type: 'string',
-            description: 'Filter by fulfillment status.'
-          },
-          payment_status: {
-            type: 'string',
-            description: 'Filter by payment status.'
-          },
-          display_id: {
-            type: 'string',
-            description: 'Filter by display ID.'
-          },
-          cart_id: {
-            type: 'string',
-            description: 'Filter by cart ID.'
-          },
           customer_id: {
             type: 'string',
-            description: 'Filter by customer ID or customer ID to transfer to (for transfer action).'
-          },
-          email: {
-            type: 'string',
-            description: 'Filter by customer email.'
+            description: 'Filter by customer ID (for list action) or customer ID to transfer to (for transfer action).'
           },
           region_id: {
             type: 'string',
             description: 'Filter by region ID.'
           },
-          currency_code: {
+          sales_channel_id: {
             type: 'string',
-            description: 'Filter by currency code.'
-          },
-          tax_rate: {
-            type: 'string',
-            description: 'Filter by tax rate.'
+            description: 'Filter by sales channel ID.'
           },
           created_at: {
             type: 'string',
-            description: 'Filter by creation date.'
+            description: 'Filter by creation date (ISO 8601 format or date range object).'
           },
           updated_at: {
             type: 'string',
-            description: 'Filter by update date.'
+            description: 'Filter by update date (ISO 8601 format or date range object).'
           },
           // Fulfillment parameters
           fulfillment_id: {
