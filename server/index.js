@@ -52,7 +52,7 @@ const mcpHandler = createStreamableHTTPHandler({
   executeToolOptimized,
   serverInfo: {
     name: SERVER_INFO.name,
-    version: '1.0.5'
+    version: '1.0.6'
   },
   protocolVersion: '2025-03-26'
 });
@@ -66,7 +66,7 @@ app.use(requestLogger);
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '1.0.5',
+    version: '1.0.6',
     transport: 'streamable-http',
     protocolVersion: '2025-03-26'
   });
