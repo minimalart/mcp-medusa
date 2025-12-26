@@ -164,15 +164,60 @@ async function getPromotion(baseUrl, headers, args) {
 
 async function createPromotion(baseUrl, headers, args) {
   if (!args.code) throw new Error('Promotion code is required');
-  if (!args.type) throw new Error('Promotion type is required');
-  
+  if (!args.type) throw new Error('Promotion type is required (standard or buyget)');
+  if (!args.application_method) throw new Error('application_method is required for creating promotions');
+
+  // Validate type enum (Medusa v2 API)
+  const validTypes = ['standard', 'buyget'];
+  if (!validTypes.includes(args.type)) {
+    throw new Error(`Invalid promotion type: ${args.type}. Must be one of: ${validTypes.join(', ')}`);
+  }
+
+  // Validate application_method structure (Medusa v2 API requirements)
+  if (!args.application_method.type) {
+    throw new Error('application_method.type is required (fixed or percentage)');
+  }
+  if (!['fixed', 'percentage'].includes(args.application_method.type)) {
+    throw new Error('application_method.type must be "fixed" or "percentage"');
+  }
+  if (!args.application_method.target_type) {
+    throw new Error('application_method.target_type is required (items, shipping, or order)');
+  }
+  if (!['items', 'shipping', 'order'].includes(args.application_method.target_type)) {
+    throw new Error('application_method.target_type must be "items", "shipping", or "order"');
+  }
+  if (args.application_method.value === undefined) {
+    throw new Error('application_method.value is required');
+  }
+
+  // Validate rules if provided (Medusa v2 requires operator and attribute)
+  if (args.rules && Array.isArray(args.rules)) {
+    args.rules.forEach((rule, index) => {
+      if (!rule.attribute) {
+        throw new Error(`rules[${index}].attribute is required`);
+      }
+      if (!rule.operator) {
+        throw new Error(`rules[${index}].operator is required (eq, in, ne, gt, gte, lt, lte)`);
+      }
+      if (!['eq', 'in', 'ne', 'gt', 'gte', 'lt', 'lte'].includes(rule.operator)) {
+        throw new Error(`rules[${index}].operator must be one of: eq, in, ne, gt, gte, lt, lte`);
+      }
+      if (rule.values === undefined) {
+        throw new Error(`rules[${index}].values is required`);
+      }
+    });
+  }
+
   const promotionData = {
     code: args.code,
-    type: args.type
+    type: args.type,
+    application_method: args.application_method
   };
+
   if (args.is_automatic !== undefined) promotionData.is_automatic = args.is_automatic;
+  if (args.is_tax_inclusive !== undefined) promotionData.is_tax_inclusive = args.is_tax_inclusive;
+  if (args.status) promotionData.status = args.status;
   if (args.campaign_id) promotionData.campaign_id = args.campaign_id;
-  if (args.application_method) promotionData.application_method = args.application_method;
   if (args.rules) promotionData.rules = args.rules;
 
   const url = `${baseUrl}/admin/promotions`;
@@ -186,9 +231,38 @@ async function createPromotion(baseUrl, headers, args) {
 async function updatePromotion(baseUrl, headers, args) {
   if (!args.promotion_id) throw new Error('Promotion ID is required');
 
+  // Validate application_method structure if provided (Medusa v2 API)
+  if (args.application_method) {
+    if (args.application_method.type && !['fixed', 'percentage'].includes(args.application_method.type)) {
+      throw new Error('application_method.type must be "fixed" or "percentage"');
+    }
+    if (args.application_method.target_type && !['items', 'shipping', 'order'].includes(args.application_method.target_type)) {
+      throw new Error('application_method.target_type must be "items", "shipping", or "order"');
+    }
+  }
+
+  // Validate rules if provided (Medusa v2 requires operator and attribute)
+  if (args.rules && Array.isArray(args.rules)) {
+    args.rules.forEach((rule, index) => {
+      if (!rule.attribute) {
+        throw new Error(`rules[${index}].attribute is required`);
+      }
+      if (!rule.operator) {
+        throw new Error(`rules[${index}].operator is required (eq, in, ne, gt, gte, lt, lte)`);
+      }
+      if (!['eq', 'in', 'ne', 'gt', 'gte', 'lt', 'lte'].includes(rule.operator)) {
+        throw new Error(`rules[${index}].operator must be one of: eq, in, ne, gt, gte, lt, lte`);
+      }
+      if (rule.values === undefined) {
+        throw new Error(`rules[${index}].values is required`);
+      }
+    });
+  }
+
   const promotionData = {};
   if (args.code) promotionData.code = args.code;
   if (args.is_automatic !== undefined) promotionData.is_automatic = args.is_automatic;
+  if (args.is_tax_inclusive !== undefined) promotionData.is_tax_inclusive = args.is_tax_inclusive;
   if (args.campaign_id) promotionData.campaign_id = args.campaign_id;
   if (args.application_method) promotionData.application_method = args.application_method;
   if (args.rules) promotionData.rules = args.rules;
@@ -274,7 +348,7 @@ async function deleteCampaign(baseUrl, headers, args) {
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_pricing',
-    description: 'Comprehensive Medusa Admin pricing and promotions management tool supporting price lists, promotions, and campaigns.',
+    description: 'Comprehensive Medusa Admin pricing and promotions management tool supporting price lists, promotions, and campaigns. For Medusa v2 API.',
     parameters: {
       type: 'object',
       properties: {
@@ -294,17 +368,116 @@ export const apiTool = {
         offset: { type: 'number', description: 'Number of items to skip.' },
         q: { type: 'string', description: 'Search query.' },
         name: { type: 'string', description: 'Name.' },
-        type: { type: 'string', description: 'Type.' },
+        type: {
+          type: 'string',
+          enum: ['standard', 'buyget', 'sale', 'override'],
+          description: 'For promotions: "standard" (regular promotion) or "buyget" (buy X get Y). For price lists: "sale" or "override".'
+        },
         description: { type: 'string', description: 'Description.' },
-        starts_at: { type: 'string', description: 'Start date.' },
-        ends_at: { type: 'string', description: 'End date.' },
-        status: { type: 'string', description: 'Status.' },
+        starts_at: { type: 'string', description: 'Start date (ISO 8601 format).' },
+        ends_at: { type: 'string', description: 'End date (ISO 8601 format).' },
+        status: {
+          type: 'string',
+          enum: ['draft', 'active', 'inactive'],
+          description: 'Promotion or price list status.'
+        },
         prices: { type: 'array', description: 'Price list prices.' },
         customer_groups: { type: 'array', description: 'Customer groups.' },
-        code: { type: 'string', description: 'Promotion code.' },
-        is_automatic: { type: 'boolean', description: 'Whether promotion is automatic.' },
-        application_method: { type: 'object', description: 'Application method.' },
-        rules: { type: 'array', description: 'Promotion rules.' },
+        code: { type: 'string', description: 'Promotion code (unique identifier).' },
+        is_automatic: { type: 'boolean', description: 'Whether promotion is automatically applied without code.' },
+        is_tax_inclusive: { type: 'boolean', description: 'Whether promotion value includes tax.' },
+        application_method: {
+          type: 'object',
+          description: 'REQUIRED for create_promotion. Defines how the promotion discount is applied. Must include: type (fixed/percentage), target_type (items/shipping/order), value (discount amount). Optional: allocation (each/across), currency_code, max_quantity, buy_rules_min_quantity, apply_to_quantity, target_rules, buy_rules.',
+          properties: {
+            type: {
+              type: 'string',
+              enum: ['fixed', 'percentage'],
+              description: 'REQUIRED. Discount type: "fixed" for fixed amount off, "percentage" for percentage off.'
+            },
+            target_type: {
+              type: 'string',
+              enum: ['items', 'shipping', 'order'],
+              description: 'REQUIRED. What the promotion applies to: "items" (cart items), "shipping" (shipping methods), or "order" (entire order).'
+            },
+            allocation: {
+              type: 'string',
+              enum: ['each', 'across'],
+              description: 'How discount is distributed: "each" (per qualifying item) or "across" (split between items).'
+            },
+            value: {
+              type: 'number',
+              description: 'REQUIRED. The discount value. For "fixed": amount in cents. For "percentage": percentage value (e.g., 10 for 10%).'
+            },
+            currency_code: {
+              type: 'string',
+              description: 'Currency code for fixed discounts (e.g., "usd", "eur"). Required when type is "fixed".'
+            },
+            max_quantity: {
+              type: 'number',
+              description: 'Maximum number of items the promotion can be applied to.'
+            },
+            buy_rules_min_quantity: {
+              type: 'number',
+              description: 'For buyget promotions: minimum quantity customer must buy before promotion applies.'
+            },
+            apply_to_quantity: {
+              type: 'number',
+              description: 'For buyget promotions: quantity of items to apply the discount to.'
+            },
+            target_rules: {
+              type: 'array',
+              description: 'Rules to restrict which items/shipping methods receive the discount.',
+              items: {
+                type: 'object',
+                properties: {
+                  attribute: { type: 'string', description: 'Property to check (e.g., "product.id", "product.collection_id", "sku").' },
+                  operator: { type: 'string', enum: ['eq', 'in', 'ne', 'gt', 'gte', 'lt', 'lte'], description: 'REQUIRED. Comparison operator.' },
+                  values: { type: 'array', items: { type: 'string' }, description: 'Values to match against.' }
+                },
+                required: ['attribute', 'operator', 'values']
+              }
+            },
+            buy_rules: {
+              type: 'array',
+              description: 'For buyget promotions: rules defining the "buy X" condition.',
+              items: {
+                type: 'object',
+                properties: {
+                  attribute: { type: 'string', description: 'Property to check (e.g., "product.id", "sku").' },
+                  operator: { type: 'string', enum: ['eq', 'in', 'ne', 'gt', 'gte', 'lt', 'lte'], description: 'REQUIRED. Comparison operator.' },
+                  values: { type: 'array', items: { type: 'string' }, description: 'Values to match against.' }
+                },
+                required: ['attribute', 'operator', 'values']
+              }
+            }
+          },
+          required: ['type', 'target_type', 'value']
+        },
+        rules: {
+          type: 'array',
+          description: 'Promotion eligibility rules (conditions for when promotion can be used). Each rule requires: attribute, operator, values.',
+          items: {
+            type: 'object',
+            properties: {
+              attribute: {
+                type: 'string',
+                description: 'REQUIRED. Property to check (e.g., "customer_id", "customer.group.id", "currency_code", "region_id").'
+              },
+              operator: {
+                type: 'string',
+                enum: ['eq', 'in', 'ne', 'gt', 'gte', 'lt', 'lte'],
+                description: 'REQUIRED. Comparison operator: eq (equals), in (in array), ne (not equals), gt/gte/lt/lte (comparisons).'
+              },
+              values: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'REQUIRED. Values to match against.'
+              }
+            },
+            required: ['attribute', 'operator', 'values']
+          }
+        },
         campaign_identifier: { type: 'string', description: 'Campaign identifier.' },
         budget: { type: 'object', description: 'Campaign budget.' }
       },
