@@ -3,7 +3,7 @@
  * Supports CRUD operations for products, variants, categories, tags, and types
  */
 
-import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
 
 /**
  * Main function to handle all product-related operations.
@@ -98,8 +98,8 @@ async function listProducts(baseUrl, headers, args) {
   if (args.tag_id) args.tag_id.forEach(id => params.append('tag_id[]', id));
   if (args.type_id) args.type_id.forEach(id => params.append('type_id[]', id));
   if (args.status) params.append('status', args.status);
-  if (args.created_at) params.append('created_at', args.created_at);
-  if (args.updated_at) params.append('updated_at', args.updated_at);
+  appendQueryParam(params, 'created_at', args.created_at);
+  appendQueryParam(params, 'updated_at', args.updated_at);
 
   const url = `${baseUrl}/admin/products?${params.toString()}`;
   return await makeRequest(url, { headers });
@@ -352,12 +352,24 @@ export const apiTool = {
           description: 'Filter by product status.'
         },
         created_at: {
-          type: 'string',
-          description: 'Filter by creation date.'
+          type: 'object',
+          description: 'Filtro por fecha de creación con operadores de rango Medusa ($gte/$lte/$gt/$lt), fechas ISO 8601. Ej: {"$gte":"2026-05-01T00:00:00Z","$lte":"2026-05-31T23:59:59Z"}.',
+          properties: {
+            $gte: { type: 'string', description: 'Mayor o igual (ISO 8601).' },
+            $lte: { type: 'string', description: 'Menor o igual (ISO 8601).' },
+            $gt: { type: 'string', description: 'Mayor (ISO 8601).' },
+            $lt: { type: 'string', description: 'Menor (ISO 8601).' }
+          }
         },
         updated_at: {
-          type: 'string',
-          description: 'Filter by update date.'
+          type: 'object',
+          description: 'Filtro por fecha de actualización con operadores de rango Medusa ($gte/$lte/$gt/$lt), ISO 8601.',
+          properties: {
+            $gte: { type: 'string', description: 'Mayor o igual (ISO 8601).' },
+            $lte: { type: 'string', description: 'Menor o igual (ISO 8601).' },
+            $gt: { type: 'string', description: 'Mayor (ISO 8601).' },
+            $lt: { type: 'string', description: 'Menor (ISO 8601).' }
+          }
         },
         title: {
           type: 'string',

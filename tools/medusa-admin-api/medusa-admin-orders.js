@@ -414,12 +414,24 @@ const apiTool = {
             description: 'Filter by tax rate.'
           },
           created_at: {
-            type: 'string',
-            description: 'Filter by creation date.'
+            type: 'object',
+            description: 'Filtro por fecha de creación con operadores de rango Medusa ($gte/$lte/$gt/$lt), fechas ISO 8601. Ej: {"$gte":"2026-05-01T00:00:00Z","$lte":"2026-05-31T23:59:59Z"}.',
+            properties: {
+              $gte: { type: 'string', description: 'Mayor o igual (ISO 8601).' },
+              $lte: { type: 'string', description: 'Menor o igual (ISO 8601).' },
+              $gt: { type: 'string', description: 'Mayor (ISO 8601).' },
+              $lt: { type: 'string', description: 'Menor (ISO 8601).' }
+            }
           },
           updated_at: {
-            type: 'string',
-            description: 'Filter by update date.'
+            type: 'object',
+            description: 'Filtro por fecha de actualización con operadores de rango Medusa ($gte/$lte/$gt/$lt), ISO 8601.',
+            properties: {
+              $gte: { type: 'string', description: 'Mayor o igual (ISO 8601).' },
+              $lte: { type: 'string', description: 'Menor o igual (ISO 8601).' },
+              $gt: { type: 'string', description: 'Mayor (ISO 8601).' },
+              $lt: { type: 'string', description: 'Menor (ISO 8601).' }
+            }
           },
           // Fulfillment parameters
           fulfillment_id: {

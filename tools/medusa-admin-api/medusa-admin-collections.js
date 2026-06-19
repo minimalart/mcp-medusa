@@ -3,7 +3,7 @@
  * Supports CRUD operations for product collections
  */
 
-import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
 
 /**
  * Main function to handle all collection-related operations.
@@ -63,8 +63,8 @@ async function listCollections(baseUrl, headers, args) {
   if (args.q) params.append('q', args.q);
   if (args.title) params.append('title', args.title);
   if (args.handle) params.append('handle', args.handle);
-  if (args.created_at) params.append('created_at', args.created_at);
-  if (args.updated_at) params.append('updated_at', args.updated_at);
+  appendQueryParam(params, 'created_at', args.created_at);
+  appendQueryParam(params, 'updated_at', args.updated_at);
 
   const url = `${baseUrl}/admin/collections?${params.toString()}`;
   return await makeRequest(url, { headers });
@@ -196,12 +196,24 @@ export const apiTool = {
           description: 'Additional collection metadata.'
         },
         created_at: {
-          type: 'string',
-          description: 'Filter by creation date.'
+          type: 'object',
+          description: 'Filtro por fecha de creación con operadores de rango Medusa ($gte/$lte/$gt/$lt), fechas ISO 8601. Ej: {"$gte":"2026-05-01T00:00:00Z","$lte":"2026-05-31T23:59:59Z"}.',
+          properties: {
+            $gte: { type: 'string', description: 'Mayor o igual (ISO 8601).' },
+            $lte: { type: 'string', description: 'Menor o igual (ISO 8601).' },
+            $gt: { type: 'string', description: 'Mayor (ISO 8601).' },
+            $lt: { type: 'string', description: 'Menor (ISO 8601).' }
+          }
         },
         updated_at: {
-          type: 'string',
-          description: 'Filter by update date.'
+          type: 'object',
+          description: 'Filtro por fecha de actualización con operadores de rango Medusa ($gte/$lte/$gt/$lt), ISO 8601.',
+          properties: {
+            $gte: { type: 'string', description: 'Mayor o igual (ISO 8601).' },
+            $lte: { type: 'string', description: 'Menor o igual (ISO 8601).' },
+            $gt: { type: 'string', description: 'Mayor (ISO 8601).' },
+            $lt: { type: 'string', description: 'Menor (ISO 8601).' }
+          }
         },
         product_ids: {
           type: 'array',

@@ -13,5 +13,6 @@ export const toolPaths = [
   'medusa-admin-api/medusa-admin-taxes.js',
   'medusa-admin-api/medusa-admin-sales-channels.js',
   'medusa-admin-api/medusa-admin-users.js',
-  'medusa-admin-api/medusa-admin-v2.js'
+  'medusa-admin-api/medusa-admin-v2.js',
+  'medusa-admin-api/medusa-admin-extensions.js'
 ];
