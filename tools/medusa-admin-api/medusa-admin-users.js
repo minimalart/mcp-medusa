@@ -129,12 +129,17 @@ async function getInvite(baseUrl, headers, args) {
 
 async function createInvite(baseUrl, headers, args) {
   if (!args.email) throw new Error('Email is required');
-  if (!args.role) throw new Error('Role is required');
-  
-  const inviteData = {
-    email: args.email,
-    role: args.role
-  };
+
+  // Medusa 2.16: POST /admin/invites espera { email, roles?: string[] } y el
+  // validador es .strict() → cualquier clave extra (p. ej. `role` en singular)
+  // devuelve 400. `roles` es OPCIONAL: una invitación sin roles es válida.
+  // Aceptamos `roles` (array) y, por compatibilidad, `role` (string) que se
+  // envuelve en array; nunca mandamos el campo `role`.
+  const inviteData = { email: args.email };
+  const roles = args.roles ?? (args.role ? [args.role] : undefined);
+  if (roles !== undefined) {
+    inviteData.roles = Array.isArray(roles) ? roles : [roles];
+  }
 
   const url = `${baseUrl}/admin/invites`;
   return await makeRequest(url, {
@@ -248,7 +253,12 @@ export const apiTool = {
         email: { type: 'string', description: 'User/invite email.' },
         first_name: { type: 'string', description: 'User first name.' },
         last_name: { type: 'string', description: 'User last name.' },
-        role: { type: 'string', description: 'User/invite role.' },
+        roles: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Invite roles (Medusa 2.16: array de role ids, OPCIONAL). Para create_invite alcanza con `email`; pasá `roles` solo si querés asignar roles existentes.'
+        },
+        role: { type: 'string', description: 'Deprecado: rol único (string). Usá `roles` (array). Se acepta por compatibilidad y se envuelve en array; nunca se manda como `role`.' },
         title: { type: 'string', description: 'API key title.' },
         type: { type: 'string', description: 'API key type.' },
         metadata: { type: 'object', description: 'Additional metadata.' }
