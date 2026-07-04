@@ -77,6 +77,10 @@ test("authorization server metadata reflects configured endpoints", () => {
     getAuthorizationServerMetadata({ headers: {} }).registration_endpoint,
     "https://issuer.example.com/oauth/register",
   );
+  assert.equal(
+    getAuthorizationServerMetadata({ headers: {} }).client_id_metadata_document_supported,
+    true,
+  );
 });
 
 test("verifyOAuthRequest accepts a valid JWT with required scope", async () => {
@@ -111,6 +115,6 @@ test("authenticateRequest returns OAuth WWW-Authenticate metadata on missing tok
   assert.equal(result.status, 401);
   assert.equal(
     result.headers["WWW-Authenticate"],
-    'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"',
+    'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource", scope="mcp:access"',
   );
 });

@@ -2,7 +2,7 @@
 /**
  * MCP Medusa HTTP Server
  *
- * Implements MCP over Streamable HTTP transport (MCP 2025-03-26)
+ * Implements MCP over Streamable HTTP transport (MCP 2025-11-25)
  * for remote access from web applications and mcp-remote clients.
  *
  * Usage:

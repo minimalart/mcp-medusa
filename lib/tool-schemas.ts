@@ -90,6 +90,23 @@ export const ProductsSchema = z.object({
   updated_at: z.string().optional().describe('Filter by update date.'),
 }).merge(BaseListSchema).merge(BaseMetadataSchema);
 
+export const ProductOptionsSchema = z.object({
+  resource: z.enum(['product_options']).optional().describe('Resource guard for policy routing.'),
+  action: z.enum(['list', 'get', 'create', 'update', 'delete', 'link_to_product'])
+    .describe('The product option operation to perform.'),
+  product_id: z.string().optional().describe('Product ID required for write and link actions.'),
+  option_id: z.string().optional().describe('Product option ID required for get/update/delete.'),
+  title: z.string().optional().describe('Product option title or title filter.'),
+  values: z.array(z.string()).optional().describe('Option values for create/update.'),
+  ranks: z.record(z.string(), z.number()).optional().describe('Map of option value to rank.'),
+  is_exclusive: z.boolean().optional().describe('false creates reusable/global options when supported.'),
+  metadata: z.record(z.string(), z.any()).optional().describe('Metadata for update actions.'),
+  add: z.array(z.any()).optional().describe('Options to add in link_to_product.'),
+  remove: z.array(z.string()).optional().describe('Option IDs to remove in link_to_product.'),
+  update: z.array(z.record(z.string(), z.any())).optional().describe('Option value updates.'),
+  query: z.record(z.string(), z.any()).optional().describe('Additional Admin API query parameters.'),
+}).merge(BaseListSchema);
+
 // Customers tool schema
 export const CustomersSchema = z.object({
   action: z.enum(['list', 'get', 'create', 'update', 'delete', 'list_addresses', 'get_address', 'create_address', 'update_address', 'delete_address', 'list_groups', 'get_group', 'create_group', 'update_group', 'delete_group', 'add_to_group', 'remove_from_group'])
@@ -317,6 +334,7 @@ export const ToolSchemas = {
   'manage_medusa_admin_orders': OrdersSchema,
   'manage_medusa_admin_draft_orders': DraftOrdersSchema,
   'manage_medusa_admin_products': ProductsSchema,
+  'manage_medusa_admin_product_options': ProductOptionsSchema,
   'manage_medusa_admin_customers': CustomersSchema,
   'manage_medusa_admin_collections': CollectionsSchema,
   'manage_medusa_admin_inventory': InventorySchema,

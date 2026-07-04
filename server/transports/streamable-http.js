@@ -1,5 +1,5 @@
 /**
- * Streamable HTTP Transport for MCP 2025-03-26
+ * Streamable HTTP Transport for MCP 2025-11-25
  *
  * Implements the new MCP Streamable HTTP transport specification:
  * - POST /mcp: Receive JSON-RPC requests, respond with JSON or SSE stream
@@ -10,6 +10,11 @@
  */
 
 import { randomUUID } from 'crypto';
+import {
+  MCP_SUPPORTED_PROTOCOL_VERSIONS,
+  MCP_VERSION_HTTP,
+} from '../../lib/constants.js';
+import { MCP_PROMPTS, getMcpPrompt } from '../../lib/prompts.js';
 
 /**
  * Session storage (in-memory for simplicity)
@@ -27,10 +32,13 @@ export class StreamableHTTPHandler {
     this.transformToolsToMcp = options.transformToolsToMcp;
     this.executeToolOptimized = options.executeToolOptimized;
     this.serverInfo = options.serverInfo || { name: 'mcp-medusa', version: '1.1.0' };
-    this.protocolVersion = options.protocolVersion || '2025-03-26';
+    this.protocolVersion = options.protocolVersion || MCP_VERSION_HTTP;
+    this.supportedProtocolVersions =
+      options.supportedProtocolVersions || MCP_SUPPORTED_PROTOCOL_VERSIONS;
 
     // Cleanup expired sessions periodically
-    setInterval(() => this.cleanupSessions(), 5 * 60 * 1000);
+    this.cleanupInterval = setInterval(() => this.cleanupSessions(), 5 * 60 * 1000);
+    this.cleanupInterval.unref?.();
   }
 
   /**
@@ -100,6 +108,18 @@ export class StreamableHTTPHandler {
    * Handle POST request - Main JSON-RPC endpoint
    */
   async handlePost(req, res, requestSessionId) {
+    const headerProtocol = req.headers['mcp-protocol-version'];
+    if (headerProtocol && !this.supportedProtocolVersions.includes(headerProtocol)) {
+      return this.sendJsonRpcError(
+        res,
+        null,
+        -32000,
+        `MCP-Protocol-Version not supported: ${headerProtocol}`,
+        undefined,
+        400,
+      );
+    }
+
     const { sessionId, session, isNew } = this.getOrCreateSession(requestSessionId);
 
     // Set session header
@@ -250,6 +270,12 @@ export class StreamableHTTPHandler {
       case 'tools/call':
         return this.handleToolsCall(params);
 
+      case 'prompts/list':
+        return this.handlePromptsList();
+
+      case 'prompts/get':
+        return this.handlePromptsGet(params);
+
       case 'ping':
         return { pong: true };
 
@@ -266,12 +292,22 @@ export class StreamableHTTPHandler {
   async handleInitialize(params, session) {
     session.initialized = true;
     session.clientInfo = params.clientInfo;
+    const requestedProtocol = params.protocolVersion;
+    if (
+      requestedProtocol &&
+      !this.supportedProtocolVersions.includes(requestedProtocol)
+    ) {
+      const error = new Error(`Protocol version not supported: ${requestedProtocol}`);
+      error.code = -32602;
+      throw error;
+    }
 
     return {
-      protocolVersion: this.protocolVersion,
+      protocolVersion: requestedProtocol || this.protocolVersion,
       serverInfo: this.serverInfo,
       capabilities: {
-        tools: {}
+        tools: {},
+        prompts: {},
       }
     };
   }
@@ -304,6 +340,35 @@ export class StreamableHTTPHandler {
     const result = await this.executeToolOptimized(tools, name, args || {});
 
     return result;
+  }
+
+  handlePromptsList() {
+    return {
+      prompts: MCP_PROMPTS.map(({ name, title, description }) => ({
+        name,
+        title,
+        description,
+      })),
+    };
+  }
+
+  handlePromptsGet(params) {
+    const prompt = getMcpPrompt(String(params?.name || ''));
+    if (!prompt) {
+      const error = new Error(`Prompt not found: ${params?.name}`);
+      error.code = -32602;
+      throw error;
+    }
+
+    return {
+      description: prompt.description,
+      messages: [
+        {
+          role: 'user',
+          content: { type: 'text', text: prompt.text },
+        },
+      ],
+    };
   }
 
   /**
@@ -354,8 +419,9 @@ export class StreamableHTTPHandler {
   /**
    * Send JSON-RPC error response
    */
-  sendJsonRpcError(res, id, code, message, data) {
+  sendJsonRpcError(res, id, code, message, data, status = 200) {
     res.setHeader('Content-Type', 'application/json');
+    res.status(status);
     res.json({
       jsonrpc: '2.0',
       id,
