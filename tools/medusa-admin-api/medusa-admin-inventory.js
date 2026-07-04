@@ -183,13 +183,16 @@ async function deleteStockLocation(baseUrl, headers, args) {
 
 // Inventory Levels operations
 async function listInventoryLevels(baseUrl, headers, args) {
+  if (!args.inventory_item_id) {
+    throw new Error('inventory_item_id is required for list_levels in Medusa v2.');
+  }
+
   const params = new URLSearchParams();
   if (args.limit) params.append('limit', args.limit.toString());
   if (args.offset) params.append('offset', args.offset.toString());
-  if (args.inventory_item_id) params.append('inventory_item_id', args.inventory_item_id);
   if (args.location_id) params.append('location_id', args.location_id);
 
-  const url = `${baseUrl}/admin/inventory-items/levels?${params.toString()}`;
+  const url = `${baseUrl}/admin/inventory-items/${args.inventory_item_id}/location-levels?${params.toString()}`;
   return await makeRequest(url, { headers });
 }
 

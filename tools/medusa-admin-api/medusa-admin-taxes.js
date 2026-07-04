@@ -130,6 +130,7 @@ async function createTaxRegion(baseUrl, headers, args) {
   };
   if (args.province_code) taxRegionData.province_code = args.province_code;
   if (args.parent_id) taxRegionData.parent_id = args.parent_id;
+  if (args.provider_id) taxRegionData.provider_id = args.provider_id;
   if (args.default_tax_rate) taxRegionData.default_tax_rate = args.default_tax_rate;
   if (args.metadata) taxRegionData.metadata = args.metadata;
 
@@ -148,6 +149,7 @@ async function updateTaxRegion(baseUrl, headers, args) {
   if (args.country_code) taxRegionData.country_code = args.country_code;
   if (args.province_code) taxRegionData.province_code = args.province_code;
   if (args.parent_id) taxRegionData.parent_id = args.parent_id;
+  if (args.provider_id) taxRegionData.provider_id = args.provider_id;
   if (args.default_tax_rate) taxRegionData.default_tax_rate = args.default_tax_rate;
   if (args.metadata) taxRegionData.metadata = args.metadata;
 
@@ -192,6 +194,7 @@ export const apiTool = {
         country_code: { type: 'string', description: 'Country code.' },
         province_code: { type: 'string', description: 'Province/state code.' },
         parent_id: { type: 'string', description: 'Parent tax region ID.' },
+        provider_id: { type: 'string', description: 'Tax provider ID, for example tp_system.' },
         default_tax_rate: { type: 'object', description: 'Default tax rate configuration.' },
         metadata: { type: 'object', description: 'Additional metadata.' }
       },

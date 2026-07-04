@@ -51,10 +51,10 @@ async function getGiftCard(baseUrl, headers, args) {
 
 async function createGiftCard(baseUrl, headers, args) {
   const giftCardData = {};
-  if (args.type) giftCardData.type = args.type;
+  if (args.code) giftCardData.code = args.code;
   if (args.value) giftCardData.value = args.value;
-  if (args.balance) giftCardData.balance = args.balance;
-  if (args.region_id) giftCardData.region_id = args.region_id;
+  if (args.currency_code) giftCardData.currency_code = args.currency_code;
+  if (args.expires_at || args.ends_at) giftCardData.expires_at = args.expires_at || args.ends_at;
   if (args.metadata) giftCardData.metadata = args.metadata;
 
   const url = `${baseUrl}/admin/gift-cards`;
@@ -69,9 +69,13 @@ async function updateGiftCard(baseUrl, headers, args) {
   if (!args.id) throw new Error('Gift card ID is required');
   
   const giftCardData = {};
-  if (args.balance !== undefined) giftCardData.balance = args.balance;
-  if (args.is_disabled !== undefined) giftCardData.is_disabled = args.is_disabled;
-  if (args.ends_at) giftCardData.ends_at = args.ends_at;
+  if (args.is_disabled !== undefined) {
+    return {
+      error: 'is_disabled is not supported by this Medusa gift card endpoint.',
+      unsupported: true
+    };
+  }
+  if (args.expires_at || args.ends_at) giftCardData.expires_at = args.expires_at || args.ends_at;
   if (args.metadata) giftCardData.metadata = args.metadata;
 
   const url = `${baseUrl}/admin/gift-cards/${args.id}`;
@@ -85,7 +89,18 @@ async function updateGiftCard(baseUrl, headers, args) {
 async function deleteGiftCard(baseUrl, headers, args) {
   if (!args.id) throw new Error('Gift card ID is required');
   const url = `${baseUrl}/admin/gift-cards/${args.id}`;
-  return await makeRequest(url, { method: 'DELETE', headers });
+  try {
+    return await makeRequest(url, { method: 'DELETE', headers });
+  } catch (error) {
+    if (error?.status === 404) {
+      return {
+        error: 'Gift card delete is not exposed by this Medusa backend.',
+        unsupported: true,
+        id: args.id
+      };
+    }
+    throw error;
+  }
 }
 
 export const apiTool = {
@@ -101,15 +116,18 @@ export const apiTool = {
           description: 'The action to perform on gift cards.'
         },
         id: { type: 'string', description: 'Gift card ID.' },
+        code: { type: 'string', description: 'Gift card code.' },
         limit: { type: 'number', description: 'Maximum number of items to return.' },
         offset: { type: 'number', description: 'Number of items to skip.' },
         q: { type: 'string', description: 'Search query.' },
         type: { type: 'string', description: 'Gift card type.' },
         value: { type: 'number', description: 'Gift card value.' },
+        currency_code: { type: 'string', description: 'Gift card currency code.' },
         balance: { type: 'number', description: 'Gift card balance.' },
         region_id: { type: 'string', description: 'Region ID.' },
         is_disabled: { type: 'boolean', description: 'Whether gift card is disabled.' },
-        ends_at: { type: 'string', description: 'Expiration date.' },
+        ends_at: { type: 'string', description: 'Expiration date alias. Prefer expires_at.' },
+        expires_at: { type: 'string', description: 'Expiration date.' },
         metadata: { type: 'object', description: 'Additional metadata.' }
       },
       required: ['action']

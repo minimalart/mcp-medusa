@@ -5,6 +5,13 @@
 
 import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
 
+function unsupportedOn404(error, message) {
+  if (error?.status === 404) {
+    return { error: message, unsupported: true };
+  }
+  throw error;
+}
+
 async function handleRegionsOperation(args) {
   const rawBaseUrl = process.env.MEDUSA_BASE_URL || 'http://localhost:9000';
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
@@ -151,17 +158,20 @@ async function getShippingOption(baseUrl, headers, args) {
 
 async function createShippingOption(baseUrl, headers, args) {
   if (!args.name) throw new Error('Shipping option name is required');
-  if (!args.region_id) throw new Error('Region ID is required');
+  if (!args.service_zone_id) throw new Error('service_zone_id is required for shipping options in Medusa v2');
+  if (!args.profile_id) throw new Error('Shipping profile ID is required');
   if (!args.provider_id) throw new Error('Provider ID is required');
-  if (!args.price_type) throw new Error('Price type is required');
+  if (args.amount === undefined) throw new Error('Amount is required');
+  if (!args.currency_code) throw new Error('Currency code is required');
   
   const optionData = {
     name: args.name,
-    region_id: args.region_id,
+    service_zone_id: args.service_zone_id,
+    shipping_profile_id: args.profile_id,
     provider_id: args.provider_id,
-    price_type: args.price_type
+    price_type: args.price_type || 'flat',
+    prices: [{ currency_code: args.currency_code, amount: args.amount }]
   };
-  if (args.amount) optionData.amount = args.amount;
   if (args.is_return !== undefined) optionData.is_return = args.is_return;
   if (args.admin_only !== undefined) optionData.admin_only = args.admin_only;
   if (args.data) optionData.data = args.data;
@@ -180,7 +190,12 @@ async function updateShippingOption(baseUrl, headers, args) {
   
   const optionData = {};
   if (args.name) optionData.name = args.name;
-  if (args.amount) optionData.amount = args.amount;
+  if (args.profile_id) optionData.shipping_profile_id = args.profile_id;
+  if (args.provider_id) optionData.provider_id = args.provider_id;
+  if (args.price_type) optionData.price_type = args.price_type;
+  if (args.amount !== undefined && args.currency_code) {
+    optionData.prices = [{ currency_code: args.currency_code, amount: args.amount }];
+  }
   if (args.is_return !== undefined) optionData.is_return = args.is_return;
   if (args.admin_only !== undefined) optionData.admin_only = args.admin_only;
   if (args.data) optionData.data = args.data;
@@ -267,7 +282,11 @@ async function listFulfillmentSets(baseUrl, headers, args) {
   if (args.offset) params.append('offset', args.offset.toString());
 
   const url = `${baseUrl}/admin/fulfillment-sets?${params.toString()}`;
-  return await makeRequest(url, { headers });
+  try {
+    return await makeRequest(url, { headers });
+  } catch (error) {
+    return unsupportedOn404(error, 'Fulfillment sets are not exposed by this Medusa backend.');
+  }
 }
 
 async function createFulfillmentSet(baseUrl, headers, args) {
@@ -281,11 +300,15 @@ async function createFulfillmentSet(baseUrl, headers, args) {
   if (args.metadata) setData.metadata = args.metadata;
 
   const url = `${baseUrl}/admin/fulfillment-sets`;
-  return await makeRequest(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(setData)
-  });
+  try {
+    return await makeRequest(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(setData)
+    });
+  } catch (error) {
+    return unsupportedOn404(error, 'Fulfillment sets are not exposed by this Medusa backend.');
+  }
 }
 
 async function updateFulfillmentSet(baseUrl, headers, args) {
@@ -296,17 +319,25 @@ async function updateFulfillmentSet(baseUrl, headers, args) {
   if (args.metadata) setData.metadata = args.metadata;
 
   const url = `${baseUrl}/admin/fulfillment-sets/${args.fulfillment_set_id}`;
-  return await makeRequest(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(setData)
-  });
+  try {
+    return await makeRequest(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(setData)
+    });
+  } catch (error) {
+    return unsupportedOn404(error, 'Fulfillment sets are not exposed by this Medusa backend.');
+  }
 }
 
 async function deleteFulfillmentSet(baseUrl, headers, args) {
   if (!args.fulfillment_set_id) throw new Error('Fulfillment set ID is required');
   const url = `${baseUrl}/admin/fulfillment-sets/${args.fulfillment_set_id}`;
-  return await makeRequest(url, { method: 'DELETE', headers });
+  try {
+    return await makeRequest(url, { method: 'DELETE', headers });
+  } catch (error) {
+    return unsupportedOn404(error, 'Fulfillment sets are not exposed by this Medusa backend.');
+  }
 }
 
 export const apiTool = {
@@ -342,8 +373,9 @@ export const apiTool = {
         tax_code: { type: 'string', description: 'Tax code.' },
         includes_tax: { type: 'boolean', description: 'Whether prices include tax.' },
         region_id: { type: 'string', description: 'Region ID for shipping options.' },
+        service_zone_id: { type: 'string', description: 'Service zone ID required for shipping options in Medusa v2.' },
         provider_id: { type: 'string', description: 'Provider ID.' },
-        price_type: { type: 'string', description: 'Price type (flat_rate, calculated).' },
+        price_type: { type: 'string', description: 'Price type (flat, calculated).' },
         amount: { type: 'number', description: 'Price amount.' },
         is_return: { type: 'boolean', description: 'Whether this is a return option.' },
         admin_only: { type: 'boolean', description: 'Whether option is admin only.' },

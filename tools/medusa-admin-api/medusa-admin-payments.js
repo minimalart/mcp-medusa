@@ -5,6 +5,13 @@
 
 import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
 
+function unsupportedOn404(error, message) {
+  if (error?.status === 404) {
+    return { error: message, unsupported: true };
+  }
+  throw error;
+}
+
 async function handlePaymentsOperation(args) {
   const rawBaseUrl = process.env.MEDUSA_BASE_URL || 'http://localhost:9000';
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
@@ -51,13 +58,21 @@ async function listPaymentCollections(baseUrl, headers, args) {
   if (args.offset) params.append('offset', args.offset.toString());
 
   const url = `${baseUrl}/admin/payment-collections?${params.toString()}`;
-  return await makeRequest(url, { headers });
+  try {
+    return await makeRequest(url, { headers });
+  } catch (error) {
+    return unsupportedOn404(error, 'Payment collections are not exposed by this Medusa backend.');
+  }
 }
 
 async function getPaymentCollection(baseUrl, headers, args) {
   if (!args.id) throw new Error('Payment collection ID is required');
   const url = `${baseUrl}/admin/payment-collections/${args.id}`;
-  return await makeRequest(url, { headers });
+  try {
+    return await makeRequest(url, { headers });
+  } catch (error) {
+    return unsupportedOn404(error, 'Payment collections are not exposed by this Medusa backend.');
+  }
 }
 
 async function updatePaymentCollection(baseUrl, headers, args) {
@@ -68,17 +83,25 @@ async function updatePaymentCollection(baseUrl, headers, args) {
   if (args.metadata) collectionData.metadata = args.metadata;
 
   const url = `${baseUrl}/admin/payment-collections/${args.id}`;
-  return await makeRequest(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(collectionData)
-  });
+  try {
+    return await makeRequest(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(collectionData)
+    });
+  } catch (error) {
+    return unsupportedOn404(error, 'Payment collections are not exposed by this Medusa backend.');
+  }
 }
 
 async function deletePaymentCollection(baseUrl, headers, args) {
   if (!args.id) throw new Error('Payment collection ID is required');
   const url = `${baseUrl}/admin/payment-collections/${args.id}`;
-  return await makeRequest(url, { method: 'DELETE', headers });
+  try {
+    return await makeRequest(url, { method: 'DELETE', headers });
+  } catch (error) {
+    return unsupportedOn404(error, 'Payment collections are not exposed by this Medusa backend.');
+  }
 }
 
 // Payments operations
@@ -149,13 +172,21 @@ async function listRefunds(baseUrl, headers, args) {
   if (args.payment_id) params.append('payment_id', args.payment_id);
 
   const url = `${baseUrl}/admin/refunds?${params.toString()}`;
-  return await makeRequest(url, { headers });
+  try {
+    return await makeRequest(url, { headers });
+  } catch (error) {
+    return unsupportedOn404(error, 'Refund listing is not exposed by this Medusa backend.');
+  }
 }
 
 async function getRefund(baseUrl, headers, args) {
   if (!args.refund_id) throw new Error('Refund ID is required');
   const url = `${baseUrl}/admin/refunds/${args.refund_id}`;
-  return await makeRequest(url, { headers });
+  try {
+    return await makeRequest(url, { headers });
+  } catch (error) {
+    return unsupportedOn404(error, 'Refund lookup is not exposed by this Medusa backend.');
+  }
 }
 
 export const apiTool = {

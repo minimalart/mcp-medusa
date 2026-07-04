@@ -119,12 +119,15 @@ async function addProductsToCollection(baseUrl, headers, args) {
     throw new Error('Product IDs array is required');
   }
 
-  const url = `${baseUrl}/admin/collections/${args.id}/products`;
-  return await makeRequest(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ product_ids: args.product_ids })
-  });
+  const products = [];
+  for (const productId of args.product_ids) {
+    products.push(await makeRequest(`${baseUrl}/admin/products/${productId}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ collection_id: args.id })
+    }));
+  }
+  return { collection_id: args.id, product_ids: args.product_ids, products };
 }
 
 async function removeProductsFromCollection(baseUrl, headers, args) {
@@ -133,12 +136,15 @@ async function removeProductsFromCollection(baseUrl, headers, args) {
     throw new Error('Product IDs array is required');
   }
 
-  const url = `${baseUrl}/admin/collections/${args.id}/products`;
-  return await makeRequest(url, {
-    method: 'DELETE',
-    headers,
-    body: JSON.stringify({ product_ids: args.product_ids })
-  });
+  const products = [];
+  for (const productId of args.product_ids) {
+    products.push(await makeRequest(`${baseUrl}/admin/products/${productId}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ collection_id: null })
+    }));
+  }
+  return { collection_id: args.id, product_ids: args.product_ids, products };
 }
 
 async function listCollectionProducts(baseUrl, headers, args) {
@@ -148,7 +154,9 @@ async function listCollectionProducts(baseUrl, headers, args) {
   if (args.limit) params.append('limit', args.limit.toString());
   if (args.offset) params.append('offset', args.offset.toString());
 
-  const url = `${baseUrl}/admin/collections/${args.id}/products?${params.toString()}`;
+  params.append('collection_id[]', args.id);
+
+  const url = `${baseUrl}/admin/products?${params.toString()}`;
   return await makeRequest(url, { headers });
 }
 

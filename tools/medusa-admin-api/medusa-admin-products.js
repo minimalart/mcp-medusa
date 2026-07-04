@@ -97,7 +97,10 @@ async function listProducts(baseUrl, headers, args) {
   if (args.category_id) args.category_id.forEach(id => params.append('category_id[]', id));
   if (args.tag_id) args.tag_id.forEach(id => params.append('tag_id[]', id));
   if (args.type_id) args.type_id.forEach(id => params.append('type_id[]', id));
-  if (args.status) params.append('status', args.status);
+  if (args.status) {
+    const statuses = Array.isArray(args.status) ? args.status : [args.status];
+    statuses.forEach(status => params.append('status[]', status));
+  }
   appendQueryParam(params, 'created_at', args.created_at);
   appendQueryParam(params, 'updated_at', args.updated_at);
 
@@ -348,8 +351,11 @@ export const apiTool = {
           description: 'Filter by type IDs.'
         },
         status: {
-          type: 'string',
-          description: 'Filter by product status.'
+          oneOf: [
+            { type: 'string' },
+            { type: 'array', items: { type: 'string' } }
+          ],
+          description: 'Filter by product status. Medusa v2 expects this as an array; a string is accepted and normalized.'
         },
         created_at: {
           type: 'object',

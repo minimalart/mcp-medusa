@@ -74,7 +74,7 @@ export const ProductsSchema = z.object({
   subtitle: z.string().optional().describe('Product subtitle.'),
   description: z.string().optional().describe('Product description.'),
   handle: z.string().optional().describe('Product handle/slug.'),
-  status: z.string().optional().describe('Filter by product status.'),
+  status: z.union([z.string(), z.array(z.string())]).optional().describe('Filter by product status. Medusa v2 expects an array; a string is accepted and normalized.'),
   type: z.string().optional().describe('Product type.'),
   tags: z.array(z.string()).optional().describe('Product tags.'),
   categories: z.array(z.string()).optional().describe('Product categories.'),
@@ -178,6 +178,7 @@ export const RegionsSchema = z.object({
   includes_tax: z.boolean().optional().describe('Whether prices include tax.'),
   shipping_option_id: z.string().optional().describe('Shipping option ID.'),
   region_id: z.string().optional().describe('Region ID for shipping options.'),
+  service_zone_id: z.string().optional().describe('Service zone ID required for shipping options in Medusa v2.'),
   provider_id: z.string().optional().describe('Provider ID.'),
   price_type: z.string().optional().describe('Price type (flat_rate, calculated).'),
   amount: z.number().optional().describe('Price amount.'),
@@ -195,6 +196,7 @@ export const PricingSchema = z.object({
     .describe('The action to perform.'),
   id: z.string().optional().describe('Price list ID.'),
   name: z.string().optional().describe('Name.'),
+  title: z.string().optional().describe('Price list title. Preferred over name for price list actions.'),
   description: z.string().optional().describe('Description.'),
   type: z.string().optional().describe('Type.'),
   status: z.string().optional().describe('Status.'),
@@ -248,12 +250,15 @@ export const GiftCardsSchema = z.object({
   action: z.enum(['list', 'get', 'create', 'update', 'delete'])
     .describe('The action to perform on gift cards.'),
   id: z.string().optional().describe('Gift card ID.'),
+  code: z.string().optional().describe('Gift card code.'),
   type: z.string().optional().describe('Gift card type.'),
   value: z.number().optional().describe('Gift card value.'),
+  currency_code: z.string().optional().describe('Gift card currency code.'),
   balance: z.number().optional().describe('Gift card balance.'),
   region_id: z.string().optional().describe('Region ID.'),
   is_disabled: z.boolean().optional().describe('Whether gift card is disabled.'),
   ends_at: z.string().optional().describe('Expiration date.'),
+  expires_at: z.string().optional().describe('Expiration date.'),
 }).merge(BaseListSchema).merge(BaseMetadataSchema);
 
 // Taxes tool schema
@@ -270,6 +275,7 @@ export const TaxesSchema = z.object({
   country_code: z.string().optional().describe('Country code.'),
   province_code: z.string().optional().describe('Province/state code.'),
   parent_id: z.string().optional().describe('Parent tax region ID.'),
+  provider_id: z.string().optional().describe('Tax provider ID, for example tp_system.'),
   default_tax_rate: z.record(z.string(), z.any()).optional().describe('Default tax rate configuration.'),
 }).merge(BaseListSchema).merge(BaseMetadataSchema);
 

@@ -103,7 +103,7 @@ async function addProductsToChannel(baseUrl, headers, args) {
   return await makeRequest(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ product_ids: args.product_ids })
+    body: JSON.stringify({ add: args.product_ids })
   });
 }
 
@@ -115,9 +115,9 @@ async function removeProductsFromChannel(baseUrl, headers, args) {
 
   const url = `${baseUrl}/admin/sales-channels/${args.id}/products`;
   return await makeRequest(url, {
-    method: 'DELETE',
+    method: 'POST',
     headers,
-    body: JSON.stringify({ product_ids: args.product_ids })
+    body: JSON.stringify({ remove: args.product_ids })
   });
 }
 
@@ -128,7 +128,9 @@ async function listChannelProducts(baseUrl, headers, args) {
   if (args.limit) params.append('limit', args.limit.toString());
   if (args.offset) params.append('offset', args.offset.toString());
 
-  const url = `${baseUrl}/admin/sales-channels/${args.id}/products?${params.toString()}`;
+  params.append('sales_channel_id[]', args.id);
+
+  const url = `${baseUrl}/admin/products?${params.toString()}`;
   return await makeRequest(url, { headers });
 }
 
