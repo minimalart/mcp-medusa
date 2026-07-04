@@ -85,7 +85,7 @@ export declare const ProductsSchema: z.ZodObject<{
     subtitle: z.ZodOptional<z.ZodString>;
     description: z.ZodOptional<z.ZodString>;
     handle: z.ZodOptional<z.ZodString>;
-    status: z.ZodOptional<z.ZodString>;
+    status: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodArray<z.ZodString>]>>;
     type: z.ZodOptional<z.ZodString>;
     tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
     categories: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -278,6 +278,7 @@ export declare const RegionsSchema: z.ZodObject<{
     includes_tax: z.ZodOptional<z.ZodBoolean>;
     shipping_option_id: z.ZodOptional<z.ZodString>;
     region_id: z.ZodOptional<z.ZodString>;
+    service_zone_id: z.ZodOptional<z.ZodString>;
     provider_id: z.ZodOptional<z.ZodString>;
     price_type: z.ZodOptional<z.ZodString>;
     amount: z.ZodOptional<z.ZodNumber>;
@@ -314,6 +315,7 @@ export declare const PricingSchema: z.ZodObject<{
     }>;
     id: z.ZodOptional<z.ZodString>;
     name: z.ZodOptional<z.ZodString>;
+    title: z.ZodOptional<z.ZodString>;
     description: z.ZodOptional<z.ZodString>;
     type: z.ZodOptional<z.ZodString>;
     status: z.ZodOptional<z.ZodString>;
@@ -411,12 +413,15 @@ export declare const GiftCardsSchema: z.ZodObject<{
         update: "update";
     }>;
     id: z.ZodOptional<z.ZodString>;
+    code: z.ZodOptional<z.ZodString>;
     type: z.ZodOptional<z.ZodString>;
     value: z.ZodOptional<z.ZodNumber>;
+    currency_code: z.ZodOptional<z.ZodString>;
     balance: z.ZodOptional<z.ZodNumber>;
     region_id: z.ZodOptional<z.ZodString>;
     is_disabled: z.ZodOptional<z.ZodBoolean>;
     ends_at: z.ZodOptional<z.ZodString>;
+    expires_at: z.ZodOptional<z.ZodString>;
     limit: z.ZodOptional<z.ZodNumber>;
     offset: z.ZodOptional<z.ZodNumber>;
     q: z.ZodOptional<z.ZodString>;
@@ -447,6 +452,7 @@ export declare const TaxesSchema: z.ZodObject<{
     country_code: z.ZodOptional<z.ZodString>;
     province_code: z.ZodOptional<z.ZodString>;
     parent_id: z.ZodOptional<z.ZodString>;
+    provider_id: z.ZodOptional<z.ZodString>;
     default_tax_rate: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
     limit: z.ZodOptional<z.ZodNumber>;
     offset: z.ZodOptional<z.ZodNumber>;
@@ -638,7 +644,7 @@ export declare const ToolSchemas: {
         subtitle: z.ZodOptional<z.ZodString>;
         description: z.ZodOptional<z.ZodString>;
         handle: z.ZodOptional<z.ZodString>;
-        status: z.ZodOptional<z.ZodString>;
+        status: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodArray<z.ZodString>]>>;
         type: z.ZodOptional<z.ZodString>;
         tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
         categories: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -831,6 +837,7 @@ export declare const ToolSchemas: {
         includes_tax: z.ZodOptional<z.ZodBoolean>;
         shipping_option_id: z.ZodOptional<z.ZodString>;
         region_id: z.ZodOptional<z.ZodString>;
+        service_zone_id: z.ZodOptional<z.ZodString>;
         provider_id: z.ZodOptional<z.ZodString>;
         price_type: z.ZodOptional<z.ZodString>;
         amount: z.ZodOptional<z.ZodNumber>;
@@ -867,6 +874,7 @@ export declare const ToolSchemas: {
         }>;
         id: z.ZodOptional<z.ZodString>;
         name: z.ZodOptional<z.ZodString>;
+        title: z.ZodOptional<z.ZodString>;
         description: z.ZodOptional<z.ZodString>;
         type: z.ZodOptional<z.ZodString>;
         status: z.ZodOptional<z.ZodString>;
@@ -964,12 +972,15 @@ export declare const ToolSchemas: {
             update: "update";
         }>;
         id: z.ZodOptional<z.ZodString>;
+        code: z.ZodOptional<z.ZodString>;
         type: z.ZodOptional<z.ZodString>;
         value: z.ZodOptional<z.ZodNumber>;
+        currency_code: z.ZodOptional<z.ZodString>;
         balance: z.ZodOptional<z.ZodNumber>;
         region_id: z.ZodOptional<z.ZodString>;
         is_disabled: z.ZodOptional<z.ZodBoolean>;
         ends_at: z.ZodOptional<z.ZodString>;
+        expires_at: z.ZodOptional<z.ZodString>;
         limit: z.ZodOptional<z.ZodNumber>;
         offset: z.ZodOptional<z.ZodNumber>;
         q: z.ZodOptional<z.ZodString>;
@@ -1000,6 +1011,7 @@ export declare const ToolSchemas: {
         country_code: z.ZodOptional<z.ZodString>;
         province_code: z.ZodOptional<z.ZodString>;
         parent_id: z.ZodOptional<z.ZodString>;
+        provider_id: z.ZodOptional<z.ZodString>;
         default_tax_rate: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodAny>>;
         limit: z.ZodOptional<z.ZodNumber>;
         offset: z.ZodOptional<z.ZodNumber>;

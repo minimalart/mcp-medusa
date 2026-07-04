@@ -5,6 +5,13 @@
 
 import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
 
+function unsupportedOn404(error, message) {
+  if (error?.status === 404) {
+    return { error: message, unsupported: true };
+  }
+  throw error;
+}
+
 async function handleReturnsOperation(args) {
   const rawBaseUrl = process.env.MEDUSA_BASE_URL || 'http://localhost:9000';
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
@@ -177,13 +184,21 @@ async function listOrderEdits(baseUrl, headers, args) {
   if (args.order_id) params.append('order_id', args.order_id);
 
   const url = `${baseUrl}/admin/order-edits?${params.toString()}`;
-  return await makeRequest(url, { headers });
+  try {
+    return await makeRequest(url, { headers });
+  } catch (error) {
+    return unsupportedOn404(error, 'Order edits are not exposed by this Medusa backend.');
+  }
 }
 
 async function getOrderEdit(baseUrl, headers, args) {
   if (!args.order_edit_id) throw new Error('Order edit ID is required');
   const url = `${baseUrl}/admin/order-edits/${args.order_edit_id}`;
-  return await makeRequest(url, { headers });
+  try {
+    return await makeRequest(url, { headers });
+  } catch (error) {
+    return unsupportedOn404(error, 'Order edits are not exposed by this Medusa backend.');
+  }
 }
 
 async function updateOrderEdit(baseUrl, headers, args) {
@@ -193,37 +208,53 @@ async function updateOrderEdit(baseUrl, headers, args) {
   if (args.internal_note) editData.internal_note = args.internal_note;
 
   const url = `${baseUrl}/admin/order-edits/${args.order_edit_id}`;
-  return await makeRequest(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(editData)
-  });
+  try {
+    return await makeRequest(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(editData)
+    });
+  } catch (error) {
+    return unsupportedOn404(error, 'Order edits are not exposed by this Medusa backend.');
+  }
 }
 
 async function deleteOrderEdit(baseUrl, headers, args) {
   if (!args.order_edit_id) throw new Error('Order edit ID is required');
   const url = `${baseUrl}/admin/order-edits/${args.order_edit_id}`;
-  return await makeRequest(url, { method: 'DELETE', headers });
+  try {
+    return await makeRequest(url, { method: 'DELETE', headers });
+  } catch (error) {
+    return unsupportedOn404(error, 'Order edits are not exposed by this Medusa backend.');
+  }
 }
 
 async function completeOrderEdit(baseUrl, headers, args) {
   if (!args.order_edit_id) throw new Error('Order edit ID is required');
   const url = `${baseUrl}/admin/order-edits/${args.order_edit_id}/complete`;
-  return await makeRequest(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({})
-  });
+  try {
+    return await makeRequest(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({})
+    });
+  } catch (error) {
+    return unsupportedOn404(error, 'Order edits are not exposed by this Medusa backend.');
+  }
 }
 
 async function cancelOrderEdit(baseUrl, headers, args) {
   if (!args.order_edit_id) throw new Error('Order edit ID is required');
   const url = `${baseUrl}/admin/order-edits/${args.order_edit_id}/cancel`;
-  return await makeRequest(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({})
-  });
+  try {
+    return await makeRequest(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({})
+    });
+  } catch (error) {
+    return unsupportedOn404(error, 'Order edits are not exposed by this Medusa backend.');
+  }
 }
 
 export const apiTool = {

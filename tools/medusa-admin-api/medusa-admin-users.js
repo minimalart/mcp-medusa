@@ -5,6 +5,13 @@
 
 import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
 
+function unsupportedOn404(error, message) {
+  if (error?.status === 404) {
+    return { error: message, unsupported: true };
+  }
+  throw error;
+}
+
 async function handleUsersOperation(args) {
   const rawBaseUrl = process.env.MEDUSA_BASE_URL || 'http://localhost:9000';
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
@@ -81,11 +88,15 @@ async function createUser(baseUrl, headers, args) {
   if (args.metadata) userData.metadata = args.metadata;
 
   const url = `${baseUrl}/admin/users`;
-  return await makeRequest(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(userData)
-  });
+  try {
+    return await makeRequest(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(userData)
+    });
+  } catch (error) {
+    return unsupportedOn404(error, 'Direct user creation is not exposed by this Medusa backend; use create_invite instead.');
+  }
 }
 
 async function updateUser(baseUrl, headers, args) {

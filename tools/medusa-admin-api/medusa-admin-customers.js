@@ -253,7 +253,7 @@ async function addCustomerToGroup(baseUrl, headers, args) {
   return await makeRequest(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ customer_ids: [args.id] })
+    body: JSON.stringify({ add: [args.id] })
   });
 }
 
@@ -263,9 +263,9 @@ async function removeCustomerFromGroup(baseUrl, headers, args) {
   
   const url = `${baseUrl}/admin/customer-groups/${args.group_id}/customers`;
   return await makeRequest(url, {
-    method: 'DELETE',
+    method: 'POST',
     headers,
-    body: JSON.stringify({ customer_ids: [args.id] })
+    body: JSON.stringify({ remove: [args.id] })
   });
 }
 

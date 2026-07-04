@@ -70,11 +70,12 @@ async function getPriceList(baseUrl, headers, args) {
 }
 
 async function createPriceList(baseUrl, headers, args) {
-  if (!args.name) throw new Error('Price list name is required');
+  const title = args.title || args.name;
+  if (!title) throw new Error('Price list title is required');
   if (!args.type) throw new Error('Price list type is required');
   
   const priceListData = {
-    name: args.name,
+    title,
     type: args.type
   };
   if (args.description) priceListData.description = args.description;
@@ -96,7 +97,7 @@ async function updatePriceList(baseUrl, headers, args) {
   if (!args.id) throw new Error('Price list ID is required');
   
   const priceListData = {};
-  if (args.name) priceListData.name = args.name;
+  if (args.title || args.name) priceListData.title = args.title || args.name;
   if (args.description) priceListData.description = args.description;
   if (args.starts_at) priceListData.starts_at = args.starts_at;
   if (args.ends_at) priceListData.ends_at = args.ends_at;
@@ -340,7 +341,8 @@ export const apiTool = {
         limit: { type: 'number', description: 'Maximum number of items to return.' },
         offset: { type: 'number', description: 'Number of items to skip.' },
         q: { type: 'string', description: 'Search query.' },
-        name: { type: 'string', description: 'Name.' },
+        name: { type: 'string', description: 'Name. For price lists this is accepted as an alias for title.' },
+        title: { type: 'string', description: 'Price list title. Preferred over name for price list actions.' },
         type: {
           type: 'string',
           enum: ['standard', 'buyget', 'sale', 'override'],
