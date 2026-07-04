@@ -2,6 +2,7 @@ export const toolPaths = [
   'medusa-admin-api/medusa-admin-orders.js',
   'medusa-admin-api/medusa-admin-draft-orders.js',
   'medusa-admin-api/medusa-admin-products.js',
+  'medusa-admin-api/medusa-admin-product-options.js',
   'medusa-admin-api/medusa-admin-customers.js',
   'medusa-admin-api/medusa-admin-collections.js',
   'medusa-admin-api/medusa-admin-inventory.js',
