@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Medusa.js MCP (Model Context Protocol) server that provides automated API tools for Medusa e-commerce backend operations. It focuses on admin API functionality including order management, cart operations, and fulfillment processing.
 
-**Version:** 1.1.0
+**Version:** 1.4.0
 **Supports:** Local STDIO (npx) and Remote Streamable HTTP (Digital Ocean)
 
 ## Architecture
@@ -112,6 +112,9 @@ cp env.example .env
 - `MEDUSA_BASE_URL` - Medusa backend URL
 - `MEDUSA_API_KEY` - Admin API key
 - `MCP_AUTH_TOKEN` - Bearer token for HTTP auth (remote only)
+
+**Optional variables:**
+- `FEEDBACK_WEBHOOK_URL` - Webhook for MCP telemetry (`context` events and `report_mcp_feedback`). Opt-in: if unset, nothing is sent over the network and events are only recorded in in-memory monitoring.
 
 ### Testing
 
@@ -231,6 +234,10 @@ const response = await fetch('https://your-app.ondigitalocean.app/mcp', {
 - **manage_medusa_admin_taxes**: Tax rates and tax regions management
 - **manage_medusa_admin_sales_channels**: Sales channels and product associations
 - **manage_medusa_admin_users**: User management, invites, and API key operations
+- **report_mcp_feedback**: Lets agents report concrete problems with the MCP (missing action, unclear error, friction). Does not touch Medusa data; routes to the telemetry webhook and in-memory monitoring
+
+### Cross-cutting: `context` property
+Every tool exposes an optional `context` string in its input schema. Agents use it to explain *why* they are making a call. It is stripped before the args reach the tool function (never sent to Medusa) and forwarded to telemetry — doubling as an audit trail for mutating operations. Injected centrally in `transformToolsToMcp()` / `executeToolOptimized()` (`lib/tools.js`); telemetry routing lives in `lib/telemetry.js`.
 
 ## Security Notes
 
