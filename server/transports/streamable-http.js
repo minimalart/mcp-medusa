@@ -14,7 +14,7 @@ import {
   MCP_SUPPORTED_PROTOCOL_VERSIONS,
   MCP_VERSION_HTTP,
 } from '../../lib/constants.js';
-import { MCP_PROMPTS, getMcpPrompt } from '../../lib/prompts.js';
+import { MCP_PROMPTS, describePrompt, getMcpPrompt, renderPrompt } from '../../lib/prompts.js';
 import { normalizeInstructions } from '../../lib/instructions.js';
 
 const FALLBACK_SERVER_INFO = { name: 'mcp-medusa', version: '1.1.0' };
@@ -40,6 +40,8 @@ export class StreamableHTTPHandler {
     // nombre, el ícono (`icons`, MCP 2025-11-25) y las reglas de ESA tienda.
     this.serverInfo = options.serverInfo || FALLBACK_SERVER_INFO;
     this.instructions = options.instructions;
+    // Mismo contrato para los prompts: lista fija o `(req) => lista`.
+    this.prompts = options.prompts || MCP_PROMPTS;
     this.protocolVersion = options.protocolVersion || MCP_VERSION_HTTP;
     this.supportedProtocolVersions =
       options.supportedProtocolVersions || MCP_SUPPORTED_PROTOCOL_VERSIONS;
@@ -279,10 +281,10 @@ export class StreamableHTTPHandler {
         return this.handleToolsCall(params);
 
       case 'prompts/list':
-        return this.handlePromptsList();
+        return this.handlePromptsList(req);
 
       case 'prompts/get':
-        return this.handlePromptsGet(params);
+        return this.handlePromptsGet(params, req);
 
       case 'ping':
         return { pong: true };
@@ -372,18 +374,19 @@ export class StreamableHTTPHandler {
     return result;
   }
 
-  handlePromptsList() {
-    return {
-      prompts: MCP_PROMPTS.map(({ name, title, description }) => ({
-        name,
-        title,
-        description,
-      })),
-    };
+  async resolvePrompts(req) {
+    const prompts = await this.resolveOption(this.prompts, req, MCP_PROMPTS);
+    return Array.isArray(prompts) ? prompts : MCP_PROMPTS;
   }
 
-  handlePromptsGet(params) {
-    const prompt = getMcpPrompt(String(params?.name || ''));
+  async handlePromptsList(req) {
+    const prompts = await this.resolvePrompts(req);
+    return { prompts: prompts.map(describePrompt) };
+  }
+
+  async handlePromptsGet(params, req) {
+    const prompts = await this.resolvePrompts(req);
+    const prompt = getMcpPrompt(String(params?.name || ''), prompts);
     if (!prompt) {
       const error = new Error(`Prompt not found: ${params?.name}`);
       error.code = -32602;
@@ -395,7 +398,7 @@ export class StreamableHTTPHandler {
       messages: [
         {
           role: 'user',
-          content: { type: 'text', text: prompt.text },
+          content: { type: 'text', text: renderPrompt(prompt, params?.arguments) },
         },
       ],
     };

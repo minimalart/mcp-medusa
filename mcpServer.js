@@ -6,12 +6,15 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ErrorCode,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
   ListToolsRequestSchema,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 import { discoverTools, executeToolOptimized, transformToolsToMcp } from "./lib/tools.js";
 import { SERVER_INFO } from "./lib/constants.js";
 import { DEFAULT_SERVER_INSTRUCTIONS } from "./lib/instructions.js";
+import { MCP_PROMPTS, describePrompt, getMcpPrompt, renderPrompt } from "./lib/prompts.js";
 
 import path from "path";
 import { fileURLToPath } from "url";
@@ -45,6 +48,30 @@ async function setupServerHandlers(server, tools) {
       );
     }
   });
+
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    prompts: MCP_PROMPTS.map(describePrompt),
+  }));
+
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const prompt = getMcpPrompt(request.params.name);
+    if (!prompt) {
+      throw new McpError(ErrorCode.InvalidParams, `Prompt not found: ${request.params.name}`);
+    }
+    try {
+      return {
+        description: prompt.description,
+        messages: [
+          {
+            role: "user",
+            content: { type: "text", text: renderPrompt(prompt, request.params.arguments) },
+          },
+        ],
+      };
+    } catch (error) {
+      throw new McpError(ErrorCode.InvalidParams, error.message);
+    }
+  });
 }
 
 async function run() {
@@ -63,6 +90,7 @@ async function run() {
     {
       capabilities: {
         tools: {},
+        prompts: {},
       },
       instructions: DEFAULT_SERVER_INSTRUCTIONS,
     }
