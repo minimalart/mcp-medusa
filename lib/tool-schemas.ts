@@ -17,11 +17,19 @@ const BaseMetadataSchema = z.object({
   metadata: z.record(z.string(), z.any()).optional().describe('Additional metadata'),
 });
 
+// Date filters accept an ISO string or a Medusa operator map ({ $gte, $lte, $gt, $lt }).
+const DateFilterSchema = z.union([z.string(), z.record(z.string(), z.any())]);
+
+const ItemQuantitySchema = z.object({
+  id: z.string().describe('Order line item ID'),
+  quantity: z.number().describe('Quantity'),
+});
+
 // Orders tool schema
 export const OrdersSchema = z.object({
-  action: z.enum(['list', 'get', 'cancel', 'complete', 'archive', 'transfer', 'list_fulfillments', 'cancel_fulfillment'])
+  action: z.enum(['list', 'get', 'cancel', 'complete', 'archive', 'transfer', 'transfer_to_guest', 'cancel_transfer', 'list_fulfillments', 'create_fulfillment', 'create_shipment', 'mark_as_delivered', 'cancel_fulfillment'])
     .describe('The action to perform on orders.'),
-  id: z.string().optional().describe('Order ID (required for get, cancel, complete, archive, transfer, list_fulfillments, cancel_fulfillment actions).'),
+  id: z.string().optional().describe('Order ID (required for every action except list).'),
   limit: z.number().optional().describe('Maximum number of orders to return (default: 20).'),
   offset: z.number().optional().describe('Number of orders to skip (default: 0).'),
   status: z.string().optional().describe('Filter by order status.'),
@@ -30,38 +38,78 @@ export const OrdersSchema = z.object({
   display_id: z.string().optional().describe('Filter by display ID.'),
   cart_id: z.string().optional().describe('Filter by cart ID.'),
   customer_id: z.string().optional().describe('Filter by customer ID or customer ID to transfer to (for transfer action).'),
-  email: z.string().optional().describe('Filter by customer email.'),
+  email: z.string().optional().describe('Filter by customer email, or the guest email for transfer_to_guest.'),
   region_id: z.string().optional().describe('Filter by region ID.'),
   currency_code: z.string().optional().describe('Filter by currency code.'),
   tax_rate: z.string().optional().describe('Filter by tax rate.'),
-  created_at: z.string().optional().describe('Filter by creation date.'),
-  updated_at: z.string().optional().describe('Filter by update date.'),
-  fulfillment_id: z.string().optional().describe('Fulfillment ID (required for cancel_fulfillment action).'),
+  created_at: DateFilterSchema.optional().describe('Filter by creation date (ISO string or {$gte,$lte,$gt,$lt}).'),
+  updated_at: DateFilterSchema.optional().describe('Filter by update date (ISO string or {$gte,$lte,$gt,$lt}).'),
+  fields: z.string().optional().describe('Fields selector.'),
+  description: z.string().optional().describe('Transfer description (transfer, transfer_to_guest).'),
+  internal_note: z.string().optional().describe('Internal note (transfer, transfer_to_guest).'),
+  update_order_email: z.boolean().optional().describe('transfer: also update the order email.'),
+  fulfillment_id: z.string().optional().describe('Fulfillment ID (create_shipment, mark_as_delivered, cancel_fulfillment).'),
+  items: z.array(ItemQuantitySchema).optional().describe('create_fulfillment / create_shipment items.'),
+  location_id: z.string().optional().describe('create_fulfillment: stock location ID.'),
+  shipping_option_id: z.string().optional().describe('create_fulfillment: shipping option ID.'),
+  delivery_address: z.record(z.string(), z.any()).optional().describe('create_fulfillment: delivery address (Medusa >= 2.19).'),
+  labels: z.array(z.record(z.string(), z.any())).optional().describe('create_shipment: [{ tracking_number, tracking_url, label_url }].'),
+  no_notification: z.boolean().optional().describe('Do not notify the customer.'),
+  metadata: z.record(z.string(), z.any()).optional().describe('Fulfillment/shipment metadata.'),
+  additional_data: z.record(z.string(), z.any()).optional().describe('Additional data for workflow hooks.'),
 });
 
 // Draft Orders tool schema
 export const DraftOrdersSchema = z.object({
-  action: z.enum(['create', 'list', 'get', 'delete', 'convert_to_order', 'add_line_item', 'update_line_item', 'remove_line_item'])
-    .describe('The action to perform on draft orders.'),
-  id: z.string().optional().describe('Draft order ID (required for get, delete, convert_to_order, add_line_item, update_line_item, remove_line_item actions).'),
-  limit: z.number().optional().describe('Maximum number of draft orders to return (default: 20).'),
+  action: z.enum([
+    'create', 'list', 'get', 'update', 'delete', 'convert_to_order',
+    'add_line_item', 'update_line_item', 'remove_line_item',
+    'begin_edit', 'edit_add_items', 'edit_update_item', 'edit_remove_item', 'edit_remove_added_item',
+    'edit_add_promotions', 'edit_remove_promotions', 'edit_add_shipping_method', 'edit_remove_shipping_method',
+    'request_edit', 'confirm_edit', 'cancel_edit',
+  ]).describe('The action to perform on draft orders.'),
+  id: z.string().optional().describe('Draft order ID (required for every action except create and list).'),
+  limit: z.number().optional().describe('Maximum number of draft orders to return (default: 50).'),
   offset: z.number().optional().describe('Number of draft orders to skip (default: 0).'),
   q: z.string().optional().describe('Query string for search.'),
-  status: z.string().optional().describe('Draft order status.'),
+  fields: z.string().optional().describe('Fields selector for get/list/convert_to_order.'),
+  status: z.string().optional().describe('Draft order status on create (only "completed").'),
   email: z.string().optional().describe('Customer email.'),
   customer_id: z.string().optional().describe('Customer ID.'),
-  region_id: z.string().optional().describe('Region ID.'),
+  region_id: z.string().optional().describe('Region ID (required for create).'),
+  sales_channel_id: z.string().optional().describe('Sales channel ID.'),
   currency_code: z.string().optional().describe('Currency code.'),
+  locale: z.string().optional().describe('Locale.'),
   shipping_address: z.record(z.string(), z.any()).optional().describe('Shipping address object.'),
   billing_address: z.record(z.string(), z.any()).optional().describe('Billing address object.'),
+  shipping_methods: z.array(z.record(z.string(), z.any())).optional().describe('Shipping methods on create.'),
   items: z.array(z.object({
-    variant_id: z.string(),
-    quantity: z.number()
-  })).optional().describe('Array of line items for draft order creation.'),
-  discounts: z.array(z.string()).optional().describe('Array of discount codes.'),
-  line_id: z.string().optional().describe('Line item ID (required for update_line_item and remove_line_item actions).'),
-  variant_id: z.string().optional().describe('Product variant ID (required for add_line_item action).'),
-  quantity: z.number().optional().describe('Quantity (required for add_line_item action, optional for update_line_item).'),
+    variant_id: z.string().optional(),
+    title: z.string().optional(),
+    quantity: z.number(),
+    unit_price: z.number().optional(),
+    compare_at_unit_price: z.number().optional(),
+    internal_note: z.string().optional(),
+    allow_backorder: z.boolean().optional(),
+    metadata: z.record(z.string(), z.any()).optional(),
+  }).passthrough()).optional().describe('Line items for create or edit_add_items.'),
+  promo_codes: z.array(z.string()).optional().describe('Promotion codes (create, edit_add_promotions, edit_remove_promotions).'),
+  discounts: z.array(z.string()).optional().describe('Deprecated alias of promo_codes.'),
+  no_notification_order: z.boolean().optional().describe('Create: do not notify the customer about the resulting order.'),
+  line_id: z.string().optional().describe('Existing line item ID (update_line_item, remove_line_item, edit_update_item, edit_remove_item).'),
+  item_id: z.string().optional().describe('Alias of line_id.'),
+  action_id: z.string().optional().describe('Order change action ID of an item added in the current edit.'),
+  variant_id: z.string().optional().describe('Product variant ID (add_line_item / edit_add_items shortcut).'),
+  title: z.string().optional().describe('Custom item title.'),
+  quantity: z.number().optional().describe('Quantity (0 removes an existing item in edit_update_item).'),
+  unit_price: z.number().optional().describe('Custom unit price.'),
+  compare_at_unit_price: z.number().optional().describe('Compare-at unit price.'),
+  internal_note: z.string().optional().describe('Internal note.'),
+  allow_backorder: z.boolean().optional().describe('Allow backorder for added items.'),
+  shipping_option_id: z.string().optional().describe('Shipping option ID (edit_add_shipping_method).'),
+  custom_amount: z.number().optional().describe('Custom shipping amount.'),
+  description: z.string().optional().describe('Shipping method description.'),
+  method_id: z.string().optional().describe('Existing shipping method ID (edit_remove_shipping_method).'),
 }).merge(BaseMetadataSchema);
 
 // Products tool schema
@@ -92,15 +140,18 @@ export const ProductsSchema = z.object({
 
 export const ProductOptionsSchema = z.object({
   resource: z.enum(['product_options']).optional().describe('Resource guard for policy routing.'),
-  action: z.enum(['list', 'get', 'create', 'update', 'delete', 'link_to_product'])
+  action: z.enum(['list', 'get', 'create', 'update', 'delete', 'list_values', 'get_value', 'update_value', 'delete_value', 'link_to_product'])
     .describe('The product option operation to perform.'),
-  product_id: z.string().optional().describe('Product ID required for write and link actions.'),
-  option_id: z.string().optional().describe('Product option ID required for get/update/delete.'),
+  product_id: z.string().optional().describe('Product ID: required for link_to_product; optional for list (product options), create (also link) and delete (unlink only).'),
+  option_id: z.string().optional().describe('Product option ID required for get/update/delete and value actions.'),
+  value_id: z.string().optional().describe('Product option value ID for get_value/update_value/delete_value.'),
+  id: z.string().optional().describe('Filter list by option ID.'),
   title: z.string().optional().describe('Product option title or title filter.'),
   values: z.array(z.string()).optional().describe('Option values for create/update.'),
+  value: z.string().optional().describe('Option value for update_value or list_values filter.'),
   ranks: z.record(z.string(), z.number()).optional().describe('Map of option value to rank.'),
-  is_exclusive: z.boolean().optional().describe('false creates reusable/global options when supported.'),
-  metadata: z.record(z.string(), z.any()).optional().describe('Metadata for update actions.'),
+  is_exclusive: z.boolean().optional().describe('false creates reusable/global options.'),
+  metadata: z.record(z.string(), z.any()).optional().describe('Metadata for create/update/update_value.'),
   add: z.array(z.any()).optional().describe('Options to add in link_to_product.'),
   remove: z.array(z.string()).optional().describe('Option IDs to remove in link_to_product.'),
   update: z.array(z.record(z.string(), z.any())).optional().describe('Option value updates.'),
@@ -139,10 +190,15 @@ export const CollectionsSchema = z.object({
 
 // Inventory tool schema
 export const InventorySchema = z.object({
-  action: z.enum(['list_items', 'get_item', 'create_item', 'update_item', 'delete_item', 'list_locations', 'get_location', 'create_location', 'update_location', 'delete_location', 'list_levels', 'update_level', 'list_reservations', 'create_reservation', 'update_reservation', 'delete_reservation'])
+  action: z.enum(['list_items', 'get_item', 'create_item', 'update_item', 'delete_item', 'export_items', 'list_locations', 'get_location', 'create_location', 'update_location', 'delete_location', 'list_levels', 'update_level', 'list_reservations', 'create_reservation', 'update_reservation', 'delete_reservation'])
     .describe('The action to perform on inventory.'),
   id: z.string().optional().describe('Inventory item ID.'),
   sku: z.string().optional().describe('Inventory item SKU.'),
+  title: z.string().optional().describe('Inventory item title.'),
+  thumbnail: z.string().optional().describe('Inventory item thumbnail URL.'),
+  requires_shipping: z.boolean().optional().describe('Whether the inventory item requires shipping.'),
+  unit_of_measure: z.string().optional().describe('Unit of measure, e.g. kg (Medusa >= 2.20; only sent when provided).'),
+  location_levels: z.array(z.record(z.string(), z.any())).optional().describe('create_item: initial stock per location.'),
   weight: z.number().optional().describe('Item weight.'),
   length: z.number().optional().describe('Item length.'),
   height: z.number().optional().describe('Item height.'),
@@ -155,17 +211,18 @@ export const InventorySchema = z.object({
   name: z.string().optional().describe('Stock location name.'),
   address: z.record(z.string(), z.any()).optional().describe('Location address.'),
   inventory_item_id: z.string().optional().describe('Inventory item ID for levels/reservations.'),
-  stocked_quantity: z.number().optional().describe('Stocked quantity.'),
-  incoming_quantity: z.number().optional().describe('Incoming quantity.'),
+  stocked_quantity: z.number().optional().describe('Stocked quantity (fractional on Medusa >= 2.20).'),
+  incoming_quantity: z.number().optional().describe('Incoming quantity (fractional on Medusa >= 2.20).'),
   reservation_id: z.string().optional().describe('Reservation ID.'),
   line_item_id: z.string().optional().describe('Line item ID for reservations.'),
-  quantity: z.number().optional().describe('Reservation quantity.'),
-  description: z.string().optional().describe('Reservation description.'),
+  quantity: z.number().optional().describe('Reservation quantity (fractional on Medusa >= 2.20).'),
+  description: z.string().optional().describe('Reservation or inventory item description.'),
+  query: z.record(z.string(), z.any()).optional().describe('export_items: extra list filters sent as query params.'),
 }).merge(BaseListSchema).merge(BaseMetadataSchema);
 
 // Regions tool schema
 export const RegionsSchema = z.object({
-  action: z.enum(['list_regions', 'get_region', 'create_region', 'update_region', 'delete_region', 'list_shipping_options', 'get_shipping_option', 'create_shipping_option', 'update_shipping_option', 'delete_shipping_option', 'list_shipping_profiles', 'get_shipping_profile', 'create_shipping_profile', 'update_shipping_profile', 'delete_shipping_profile', 'list_fulfillment_providers', 'list_fulfillment_sets', 'create_fulfillment_set', 'update_fulfillment_set', 'delete_fulfillment_set'])
+  action: z.enum(['list_regions', 'get_region', 'create_region', 'update_region', 'delete_region', 'list_shipping_options', 'get_shipping_option', 'create_shipping_option', 'update_shipping_option', 'delete_shipping_option', 'list_shipping_profiles', 'get_shipping_profile', 'create_shipping_profile', 'update_shipping_profile', 'delete_shipping_profile', 'list_fulfillment_providers', 'list_fulfillment_sets', 'create_fulfillment_set', 'delete_fulfillment_set', 'create_service_zone', 'get_service_zone', 'update_service_zone', 'delete_service_zone'])
     .describe('The action to perform.'),
   id: z.string().optional().describe('Region ID.'),
   name: z.string().optional().describe('Name.'),
@@ -178,16 +235,18 @@ export const RegionsSchema = z.object({
   includes_tax: z.boolean().optional().describe('Whether prices include tax.'),
   shipping_option_id: z.string().optional().describe('Shipping option ID.'),
   region_id: z.string().optional().describe('Region ID for shipping options.'),
-  service_zone_id: z.string().optional().describe('Service zone ID required for shipping options in Medusa v2.'),
+  service_zone_id: z.string().optional().describe('Service zone ID (service zone actions and create_shipping_option).'),
   provider_id: z.string().optional().describe('Provider ID.'),
-  price_type: z.string().optional().describe('Price type (flat_rate, calculated).'),
+  price_type: z.string().optional().describe('Price type (flat, calculated).'),
   amount: z.number().optional().describe('Price amount.'),
   admin_only: z.boolean().optional().describe('Whether option is admin only.'),
   is_return: z.boolean().optional().describe('Whether this is a return option.'),
   profile_id: z.string().optional().describe('Shipping profile ID.'),
-  type: z.string().optional().describe('Profile/set type.'),
+  type: z.string().optional().describe('Shipping profile type or fulfillment set type (shipping, pickup).'),
   data: z.record(z.string(), z.any()).optional().describe('Additional data.'),
   fulfillment_set_id: z.string().optional().describe('Fulfillment set ID.'),
+  location_id: z.string().optional().describe('Stock location ID (create_fulfillment_set, list_fulfillment_sets filter).'),
+  geo_zones: z.array(z.record(z.string(), z.any())).optional().describe('Service zone geo zones.'),
 }).merge(BaseListSchema).merge(BaseMetadataSchema);
 
 // Pricing tool schema
@@ -207,47 +266,65 @@ export const PricingSchema = z.object({
   promotion_id: z.string().optional().describe('Promotion ID.'),
   code: z.string().optional().describe('Promotion code.'),
   is_automatic: z.boolean().optional().describe('Whether promotion is automatic.'),
+  is_tax_inclusive: z.boolean().optional().describe('Whether the promotion value includes tax.'),
   rules: z.array(z.any()).optional().describe('Promotion rules.'),
   application_method: z.record(z.string(), z.any()).optional().describe('Application method.'),
   campaign_id: z.string().optional().describe('Campaign ID.'),
   campaign_identifier: z.string().optional().describe('Campaign identifier.'),
   budget: z.record(z.string(), z.any()).optional().describe('Campaign budget.'),
+  metadata: z.record(z.string(), z.any()).optional().describe('Promotion metadata (Medusa >= 2.21; only sent when provided).'),
 }).merge(BaseListSchema);
 
 // Payments tool schema
 export const PaymentsSchema = z.object({
-  action: z.enum(['list_payment_collections', 'get_payment_collection', 'update_payment_collection', 'delete_payment_collection', 'list_payments', 'get_payment', 'capture_payment', 'cancel_payment', 'refund_payment', 'list_refunds', 'get_refund'])
+  action: z.enum(['list_payment_collections', 'get_payment_collection', 'create_payment_collection', 'mark_payment_collection_as_paid', 'create_payment_session', 'delete_payment_collection', 'list_payments', 'get_payment', 'capture_payment', 'refund_payment', 'list_refunds', 'get_refund', 'list_payment_providers', 'list_refund_reasons'])
     .describe('The action to perform on payments.'),
   id: z.string().optional().describe('Payment collection ID.'),
-  description: z.string().optional().describe('Payment collection description.'),
-  payment_collection_id: z.string().optional().describe('Payment collection ID for filtering.'),
+  order_id: z.string().optional().describe('Order ID (payment collections are read from their order).'),
+  payment_collection_id: z.string().optional().describe('Payment collection filter for list_payments (requires order_id).'),
+  payment_session_id: z.string().optional().describe('Payment session filter for list_payments.'),
   payment_id: z.string().optional().describe('Payment ID.'),
-  amount: z.number().optional().describe('Amount for capture/refund.'),
-  reason: z.string().optional().describe('Refund reason.'),
+  provider_id: z.string().optional().describe('Payment provider ID.'),
+  is_enabled: z.boolean().optional().describe('Filter payment providers by enabled state.'),
+  data: z.record(z.string(), z.any()).optional().describe('Provider data for create_payment_session.'),
+  amount: z.number().optional().describe('Amount (> 0 for capture/refund; required for refund and create_payment_collection).'),
+  refund_reason_id: z.string().optional().describe('Refund reason ID.'),
+  reason: z.string().optional().describe('Deprecated free-text refund reason (appended to note).'),
   note: z.string().optional().describe('Refund note.'),
   refund_id: z.string().optional().describe('Refund ID.'),
+  created_at: DateFilterSchema.optional().describe('Date filter for list_payments.'),
+  updated_at: DateFilterSchema.optional().describe('Date filter for list_payments.'),
 }).merge(BaseListSchema).merge(BaseMetadataSchema);
 
 // Returns tool schema
 export const ReturnsSchema = z.object({
-  action: z.enum(['list_returns', 'get_return', 'cancel_return', 'receive_return', 'list_exchanges', 'get_exchange', 'cancel_exchange', 'list_claims', 'get_claim', 'update_claim', 'cancel_claim', 'list_order_edits', 'get_order_edit', 'update_order_edit', 'delete_order_edit', 'complete_order_edit', 'cancel_order_edit'])
+  action: z.enum(['list_returns', 'get_return', 'cancel_return', 'receive_return', 'list_exchanges', 'get_exchange', 'cancel_exchange', 'list_claims', 'get_claim', 'cancel_claim', 'list_order_edits', 'get_order_edit', 'create_order_edit', 'order_edit_add_items', 'order_edit_update_item', 'order_edit_update_added_item', 'order_edit_remove_added_item', 'order_edit_add_shipping_method', 'order_edit_update_shipping_method', 'order_edit_remove_shipping_method', 'request_order_edit', 'confirm_order_edit', 'complete_order_edit', 'cancel_order_edit', 'delete_order_edit'])
     .describe('The action to perform.'),
   id: z.string().optional().describe('Return ID.'),
-  order_id: z.string().optional().describe('Order ID for filtering.'),
-  items: z.array(z.any()).optional().describe('Items to receive/return.'),
-  refund: z.number().optional().describe('Refund amount.'),
-  shipping_methods: z.array(z.any()).optional().describe('Shipping methods.'),
+  order_id: z.string().optional().describe('Order ID (filter for list actions; required for order edit actions).'),
+  items: z.array(z.any()).optional().describe('receive_return items [{ id, quantity }] or order_edit_add_items items [{ variant_id, quantity }].'),
+  refund: z.number().optional().describe('Unsupported in Medusa v2 (use payments refund_payment).'),
   exchange_id: z.string().optional().describe('Exchange ID.'),
   claim_id: z.string().optional().describe('Claim ID.'),
-  claim_items: z.array(z.any()).optional().describe('Claim items.'),
-  order_edit_id: z.string().optional().describe('Order edit ID.'),
-  internal_note: z.string().optional().describe('Internal note for order edit.'),
-  no_notification: z.boolean().optional().describe('Whether to skip notifications.'),
+  order_edit_id: z.string().optional().describe('Deprecated: order edits are addressed by order_id.'),
+  item_id: z.string().optional().describe('Existing order line item ID (order_edit_update_item).'),
+  action_id: z.string().optional().describe('Order change action ID (added item or shipping method).'),
+  variant_id: z.string().optional().describe('Variant ID for order_edit_add_items.'),
+  quantity: z.number().optional().describe('Quantity for order edit item actions.'),
+  unit_price: z.number().optional().describe('Custom unit price.'),
+  compare_at_unit_price: z.number().optional().describe('Compare-at unit price.'),
+  allow_backorder: z.boolean().optional().describe('Allow backorder for added items.'),
+  shipping_option_id: z.string().optional().describe('Shipping option ID.'),
+  custom_amount: z.number().optional().describe('Custom shipping amount.'),
+  description: z.string().optional().describe('Description.'),
+  status: z.string().optional().describe('Order change status filter for list_order_edits.'),
+  internal_note: z.string().optional().describe('Internal note.'),
+  no_notification: z.boolean().optional().describe('Whether to skip notifications (request_order_edit needs Medusa >= 2.19).'),
 }).merge(BaseListSchema).merge(BaseMetadataSchema);
 
 // Gift Cards tool schema
 export const GiftCardsSchema = z.object({
-  action: z.enum(['list', 'get', 'create', 'update', 'delete'])
+  action: z.enum(['list', 'get', 'create', 'update', 'list_orders'])
     .describe('The action to perform on gift cards.'),
   id: z.string().optional().describe('Gift card ID.'),
   code: z.string().optional().describe('Gift card code.'),
@@ -256,8 +333,10 @@ export const GiftCardsSchema = z.object({
   currency_code: z.string().optional().describe('Gift card currency code.'),
   balance: z.number().optional().describe('Gift card balance.'),
   region_id: z.string().optional().describe('Region ID.'),
-  is_disabled: z.boolean().optional().describe('Whether gift card is disabled.'),
-  ends_at: z.string().optional().describe('Expiration date.'),
+  is_disabled: z.boolean().optional().describe('Unsupported by the loyalty plugin.'),
+  status: z.enum(['pending', 'redeemed']).optional().describe('Gift card status.'),
+  note: z.string().optional().describe('Internal note.'),
+  ends_at: z.string().optional().describe('Expiration date alias.'),
   expires_at: z.string().optional().describe('Expiration date.'),
 }).merge(BaseListSchema).merge(BaseMetadataSchema);
 
@@ -292,13 +371,15 @@ export const SalesChannelsSchema = z.object({
 
 // Users tool schema
 export const UsersSchema = z.object({
-  action: z.enum(['list_users', 'get_user', 'create_user', 'update_user', 'delete_user', 'list_invites', 'get_invite', 'create_invite', 'delete_invite', 'resend_invite', 'list_api_keys', 'get_api_key', 'create_api_key', 'update_api_key', 'delete_api_key', 'revoke_api_key'])
+  action: z.enum(['list_users', 'get_user', 'get_current_user', 'list_auth_providers', 'update_user', 'delete_user', 'list_invites', 'get_invite', 'create_invite', 'delete_invite', 'resend_invite', 'list_api_keys', 'get_api_key', 'create_api_key', 'update_api_key', 'delete_api_key', 'revoke_api_key'])
     .describe('The action to perform.'),
   id: z.string().optional().describe('User ID.'),
   email: z.string().optional().describe('User/invite email.'),
   first_name: z.string().optional().describe('User first name.'),
   last_name: z.string().optional().describe('User last name.'),
-  role: z.string().optional().describe('User/invite role.'),
+  avatar_url: z.string().optional().describe('User avatar URL.'),
+  roles: z.array(z.string()).optional().describe('Invite roles (array of role IDs).'),
+  role: z.string().optional().describe('Deprecated single invite role.'),
   invite_id: z.string().optional().describe('Invite ID.'),
   api_key_id: z.string().optional().describe('API key ID.'),
   title: z.string().optional().describe('API key title.'),
@@ -306,18 +387,31 @@ export const UsersSchema = z.object({
 }).merge(BaseListSchema).merge(BaseMetadataSchema);
 
 export const AdminV2Schema = z.object({
-  action: z.enum(['list', 'get', 'request']).describe('The Medusa v2 Admin API action to perform.'),
+  action: z.enum([
+    'list',
+    'get',
+    'request',
+    'search',
+    'list_search_indexes',
+    'reindex_search_index',
+    'delete_search_index',
+    'create_store_credit_account',
+    'credit_store_credit_account',
+    'debit_store_credit_account',
+    'list_store_credit_transactions',
+  ]).describe('The Medusa v2 Admin API action to perform.'),
   resource: z.enum([
-    'auth',
     'currencies',
     'feature_flags',
     'index',
     'locales',
+    'mfa_factors',
     'notifications',
     'price_preferences',
     'property_labels',
     'refund_reasons',
     'return_reasons',
+    'search_indexes',
     'shipping_option_types',
     'stores',
     'store_credit_accounts',
@@ -327,12 +421,24 @@ export const AdminV2Schema = z.object({
     'views',
     'workflow_executions',
   ]).optional().describe('Known Medusa v2 Admin API resource for list/get actions.'),
-  id: z.string().optional().describe('Resource ID for get actions.'),
-  method: z.enum(['GET', 'POST', 'PATCH', 'DELETE']).optional().describe('HTTP method for request actions.'),
-  path: z.string().optional().describe('Explicit /admin/* or /auth* path for request actions.'),
+  id: z.string().optional().describe('Resource, search index or store credit account ID.'),
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional().describe('HTTP method for request actions.'),
+  path: z.string().optional().describe('Explicit /admin/* or /auth* path for request actions (sensitive paths are blocked).'),
   query: z.record(z.string(), z.any()).optional().describe('Query parameters serialized with Medusa v2 rules.'),
-  body: z.record(z.string(), z.any()).optional().describe('JSON request body.'),
+  body: z.record(z.string(), z.any()).optional().describe('JSON request body (POST, PUT, PATCH, DELETE).'),
   headers: z.record(z.string(), z.any()).optional().describe('Additional request headers.'),
+  q: z.string().optional().describe('Search text for action=search (Medusa >= 2.19).'),
+  entity: z.union([z.string(), z.array(z.string())]).optional().describe('Entities for action=search.'),
+  limit: z.number().optional().describe('Page size for search/transactions.'),
+  offset: z.number().optional().describe('Offset for search/transactions.'),
+  since: z.string().optional().describe('reindex_search_index: ISO datetime (Medusa >= 2.21).'),
+  filters: z.record(z.string(), z.any()).optional().describe('reindex_search_index filters (Medusa >= 2.21).'),
+  strategy: z.enum(['swap', 'in_place']).optional().describe('reindex_search_index strategy (Medusa >= 2.21).'),
+  amount: z.number().optional().describe('Store credit amount (> 0).'),
+  note: z.string().optional().describe('Store credit note.'),
+  currency_code: z.string().optional().describe('Store credit account currency.'),
+  customer_id: z.string().optional().describe('Store credit account customer.'),
+  metadata: z.record(z.string(), z.any()).optional().describe('Store credit account metadata.'),
 });
 
 // Export all schemas in a map for easy access
