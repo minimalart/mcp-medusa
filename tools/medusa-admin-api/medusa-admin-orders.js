@@ -4,6 +4,7 @@
  */
 
 import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { sentGatedFields, withGatedFields, withMedusaErrorHints, withMinVersion } from "../../lib/medusa-version.js";
 
 /**
  * Function to list orders with filtering and pagination.
@@ -76,9 +77,10 @@ const getOrder = async (args) => {
   }
 
   try {
-    const url = `${baseUrl}/admin/orders/${args.id}`;
+    const url = new URL(`${baseUrl}/admin/orders/${args.id}`);
+    if (args.fields) appendQueryParam(url.searchParams, 'fields', args.fields);
 
-    const data = await makeRequest(url, {
+    const data = await makeRequest(url.toString(), {
       method: 'GET',
       headers: createHeaders(apiKey)
     });
@@ -223,13 +225,18 @@ const transferOrder = async (args) => {
   try {
     const url = `${baseUrl}/admin/orders/${args.id}/transfer`;
 
+    const transferData = { customer_id: args.customer_id };
+    if (args.description !== undefined) transferData.description = args.description;
+    if (args.internal_note !== undefined) transferData.internal_note = args.internal_note;
+    if (args.update_order_email !== undefined) transferData.update_order_email = args.update_order_email;
+
     const data = await makeRequest(url, {
       method: 'POST',
       headers: createHeaders(apiKey),
-      body: JSON.stringify({ customer_id: args.customer_id })
+      body: JSON.stringify(transferData)
     });
-    
-    return { success: true, message: 'Order transferred successfully', order: data };
+
+    return { success: true, message: 'Order transfer requested successfully (the customer must accept it)', order: data };
   } catch (error) {
     console.error('Error transferring order:', error);
     return { error: `An error occurred while transferring the order: ${error.message}` };
@@ -299,11 +306,16 @@ const cancelFulfillment = async (args) => {
   try {
     const url = `${baseUrl}/admin/orders/${args.id}/fulfillments/${args.fulfillment_id}/cancel`;
 
-    const data = await makeRequest(url, {
+    const request = {
       method: 'POST',
       headers: createHeaders(apiKey)
-    });
-    
+    };
+    if (args.no_notification !== undefined) {
+      request.body = JSON.stringify({ no_notification: args.no_notification });
+    }
+
+    const data = await makeRequest(url, request);
+
     return { success: true, message: 'Fulfillment canceled successfully', fulfillment: data };
   } catch (error) {
     console.error('Error canceling fulfillment:', error);
@@ -311,11 +323,213 @@ const cancelFulfillment = async (args) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Fulfillment / shipment / transfer actions (Medusa v2)
+// ---------------------------------------------------------------------------
+
+function getOrdersConfig() {
+  const rawBaseUrl = process.env.MEDUSA_BASE_URL || 'http://localhost:9000';
+  const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
+
+  if (!baseUrl || !apiKey || !hasMedusaCredentials()) {
+    return { error: missingCredentialsMessage() };
+  }
+  return { baseUrl, apiKey };
+}
+
+function pickDefined(source, keys) {
+  const out = {};
+  for (const key of keys) {
+    if (source[key] !== undefined) out[key] = source[key];
+  }
+  return out;
+}
+
+function validateItems(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return 'items is required: [{ id: order line item ID, quantity }].';
+  }
+  const invalid = items.find((item) => !item || typeof item.id !== 'string' || typeof item.quantity !== 'number');
+  if (invalid) {
+    return 'Every item needs { id: order line item ID (string), quantity (number) }.';
+  }
+  return null;
+}
+
+async function postOrderAction(config, path, body, query) {
+  const url = new URL(`${config.baseUrl}${path}`);
+  Object.entries(query || {}).forEach(([key, value]) => appendQueryParam(url.searchParams, key, value));
+  return await makeRequest(url.toString(), {
+    method: 'POST',
+    headers: createHeaders(config.apiKey),
+    body: JSON.stringify(body || {})
+  });
+}
+
+/**
+ * Create a fulfillment for an order.
+ * POST /admin/orders/{id}/fulfillments (Medusa 2.x; delivery_address since 2.19).
+ */
+const createFulfillment = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+
+  if (!args.id) {
+    return { error: 'Order ID is required.' };
+  }
+  const itemsError = validateItems(args.items);
+  if (itemsError) return { error: itemsError };
+
+  const body = {
+    items: args.items.map((item) => ({ id: item.id, quantity: item.quantity })),
+    ...pickDefined(args, ['location_id', 'shipping_option_id', 'no_notification', 'metadata', 'additional_data'])
+  };
+  // delivery_address sólo existe desde Medusa 2.19 (validación estricta en 2.18): sólo se manda si viene.
+  if (args.delivery_address !== undefined) body.delivery_address = args.delivery_address;
+
+  try {
+    const data = await withGatedFields(
+      sentGatedFields(body, { delivery_address: '2.19' }),
+      () => postOrderAction(config, `/admin/orders/${encodeURIComponent(args.id)}/fulfillments`, body, { fields: args.fields })
+    );
+    if (data?.unsupported) return data;
+    return { success: true, message: 'Fulfillment created successfully', order: data };
+  } catch (error) {
+    console.error('Error creating fulfillment:', error);
+    return { error: `An error occurred while creating the fulfillment: ${error.message}` };
+  }
+};
+
+/**
+ * Create a shipment for a fulfillment.
+ * POST /admin/orders/{id}/fulfillments/{fulfillment_id}/shipments
+ */
+const createShipment = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+
+  if (!args.id) {
+    return { error: 'Order ID is required.' };
+  }
+  if (!args.fulfillment_id) {
+    return { error: 'Fulfillment ID is required.' };
+  }
+  const itemsError = validateItems(args.items);
+  if (itemsError) return { error: itemsError };
+
+  const body = {
+    items: args.items.map((item) => ({ id: item.id, quantity: item.quantity })),
+    ...pickDefined(args, ['labels', 'no_notification', 'metadata', 'additional_data'])
+  };
+
+  try {
+    const data = await postOrderAction(
+      config,
+      `/admin/orders/${encodeURIComponent(args.id)}/fulfillments/${encodeURIComponent(args.fulfillment_id)}/shipments`,
+      body,
+      { fields: args.fields }
+    );
+    return { success: true, message: 'Shipment created successfully', order: data };
+  } catch (error) {
+    console.error('Error creating shipment:', error);
+    return { error: `An error occurred while creating the shipment: ${error.message}` };
+  }
+};
+
+/**
+ * Mark a fulfillment as delivered.
+ * POST /admin/orders/{id}/fulfillments/{fulfillment_id}/mark-as-delivered
+ */
+const markFulfillmentAsDelivered = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+
+  if (!args.id) {
+    return { error: 'Order ID is required.' };
+  }
+  if (!args.fulfillment_id) {
+    return { error: 'Fulfillment ID is required.' };
+  }
+
+  try {
+    const data = await postOrderAction(
+      config,
+      `/admin/orders/${encodeURIComponent(args.id)}/fulfillments/${encodeURIComponent(args.fulfillment_id)}/mark-as-delivered`,
+      pickDefined(args, ['no_notification']),
+      { fields: args.fields }
+    );
+    return { success: true, message: 'Fulfillment marked as delivered', order: data };
+  } catch (error) {
+    console.error('Error marking fulfillment as delivered:', error);
+    return { error: `An error occurred while marking the fulfillment as delivered: ${error.message}` };
+  }
+};
+
+/**
+ * Transfer an order to a guest customer identified by email.
+ * POST /admin/orders/{id}/transfer/guest (Medusa 2.18+).
+ */
+const transferOrderToGuest = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+
+  if (!args.id) {
+    return { error: 'Order ID is required.' };
+  }
+  if (!args.email) {
+    return { error: 'email is required: the guest customer email the order is transferred to.' };
+  }
+
+  try {
+    const data = await withMinVersion('2.18', () =>
+      postOrderAction(
+        config,
+        `/admin/orders/${encodeURIComponent(args.id)}/transfer/guest`,
+        { email: args.email, ...pickDefined(args, ['description', 'internal_note']) },
+        { fields: args.fields }
+      )
+    );
+    if (data?.unsupported) return data;
+    return { success: true, message: 'Order transferred to guest customer successfully', order: data };
+  } catch (error) {
+    console.error('Error transferring order to guest:', error);
+    return { error: `An error occurred while transferring the order to a guest customer: ${error.message}` };
+  }
+};
+
+/**
+ * Cancel a pending order transfer request.
+ * POST /admin/orders/{id}/transfer/cancel
+ */
+const cancelOrderTransfer = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+
+  if (!args.id) {
+    return { error: 'Order ID is required.' };
+  }
+
+  try {
+    const data = await postOrderAction(config, `/admin/orders/${encodeURIComponent(args.id)}/transfer/cancel`, {}, { fields: args.fields });
+    return { success: true, message: 'Order transfer request canceled', order: data };
+  } catch (error) {
+    console.error('Error canceling order transfer:', error);
+    return { error: `An error occurred while canceling the order transfer: ${error.message}` };
+  }
+};
+
+const ACTIONS = [
+  'list', 'get', 'cancel', 'complete', 'archive',
+  'transfer', 'transfer_to_guest', 'cancel_transfer',
+  'list_fulfillments', 'create_fulfillment', 'create_shipment', 'mark_as_delivered', 'cancel_fulfillment'
+];
+
 /**
  * Master function that routes to appropriate order operation based on action.
  *
  * @param {Object} args - Arguments for the order operation.
- * @param {string} args.action - The action to perform (list, get, cancel, complete, archive, transfer, list_fulfillments, cancel_fulfillment).
+ * @param {string} args.action - The action to perform (see ACTIONS).
  * @returns {Promise<Object>} - The result of the order operation.
  */
 const executeFunction = async (args) => {
@@ -336,10 +550,20 @@ const executeFunction = async (args) => {
       return await transferOrder(operationArgs);
     case 'list_fulfillments':
       return await listOrderFulfillments(operationArgs);
+    case 'transfer_to_guest':
+      return await transferOrderToGuest(operationArgs);
+    case 'cancel_transfer':
+      return await cancelOrderTransfer(operationArgs);
+    case 'create_fulfillment':
+      return await createFulfillment(operationArgs);
+    case 'create_shipment':
+      return await createShipment(operationArgs);
+    case 'mark_as_delivered':
+      return await markFulfillmentAsDelivered(operationArgs);
     case 'cancel_fulfillment':
       return await cancelFulfillment(operationArgs);
     default:
-      return { error: `Invalid action: ${action}. Valid actions are: list, get, cancel, complete, archive, transfer, list_fulfillments, cancel_fulfillment` };
+      return { error: `Invalid action: ${action}. Valid actions are: ${ACTIONS.join(', ')}` };
   }
 };
 
@@ -350,19 +574,25 @@ const executeFunction = async (args) => {
 const apiTool = {
   definition: {
     name: 'manage_medusa_admin_orders',
-    description: 'Comprehensive Medusa Admin order management tool supporting order operations (list, get, cancel, complete, archive, transfer, and fulfillment management).',
+    description:
+      'Medusa Admin orders (Medusa 2.17.2+, incl. 2.18 and 2.21.1): list, get, cancel, complete, archive. ' +
+      'transfer (customer_id: sends the customer a transfer request they must accept; optional description, internal_note, update_order_email), ' +
+      'transfer_to_guest (email: moves the order to a guest customer with that email, e.g. to fix a mistyped email; Medusa >= 2.18), cancel_transfer (cancels a pending transfer request). ' +
+      'Fulfillment flow: list_fulfillments → create_fulfillment (items [{id: order line item ID, quantity}], optional location_id, shipping_option_id, no_notification, metadata, delivery_address (Medusa >= 2.19)) → ' +
+      'create_shipment (fulfillment_id + items, optional labels [{tracking_number, tracking_url, label_url}]) → mark_as_delivered (fulfillment_id); cancel_fulfillment (fulfillment_id, only if not shipped). ' +
+      'Fulfillment, shipment and delivery actions notify the customer unless no_notification is true.',
     parameters: {
         type: 'object',
         properties: {
           action: {
             type: 'string',
-            enum: ['list', 'get', 'cancel', 'complete', 'archive', 'transfer', 'list_fulfillments', 'cancel_fulfillment'],
+            enum: ACTIONS,
             description: 'The action to perform on orders.'
           },
           // Common parameters
           id: {
             type: 'string',
-            description: 'Order ID (required for get, cancel, complete, archive, transfer, list_fulfillments, cancel_fulfillment actions).'
+            description: 'Order ID (required for every action except list).'
           },
           // List parameters
           limit: {
@@ -399,7 +629,7 @@ const apiTool = {
           },
           email: {
             type: 'string',
-            description: 'Filter by customer email.'
+            description: 'Filter by customer email, or the guest email for transfer_to_guest.'
           },
           region_id: {
             type: 'string',
@@ -433,16 +663,74 @@ const apiTool = {
               $lt: { type: 'string', description: 'Menor (ISO 8601).' }
             }
           },
+          fields: {
+            type: 'string',
+            description: 'Fields selector for list/get and for the order returned by write actions.'
+          },
+          // Transfer parameters
+          description: {
+            type: 'string',
+            description: 'Transfer description shown to the customer (transfer, transfer_to_guest).'
+          },
+          internal_note: {
+            type: 'string',
+            description: 'Internal note visible only to admins (transfer, transfer_to_guest).'
+          },
+          update_order_email: {
+            type: 'boolean',
+            description: "transfer: also update the order email to the new customer's email."
+          },
           // Fulfillment parameters
           fulfillment_id: {
             type: 'string',
-            description: 'Fulfillment ID (required for cancel_fulfillment action).'
+            description: 'Fulfillment ID (required for create_shipment, mark_as_delivered and cancel_fulfillment).'
+          },
+          items: {
+            type: 'array',
+            description: 'create_fulfillment / create_shipment: order line items and quantities, [{ id, quantity }].',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Order line item ID.' },
+                quantity: { type: 'number', description: 'Quantity to fulfill/ship.' }
+              },
+              required: ['id', 'quantity']
+            }
+          },
+          location_id: {
+            type: 'string',
+            description: 'create_fulfillment: stock location to fulfill from (defaults to the shipping option location).'
+          },
+          shipping_option_id: {
+            type: 'string',
+            description: 'create_fulfillment: shipping option to use.'
+          },
+          delivery_address: {
+            type: 'object',
+            description: 'create_fulfillment: address to deliver to (Medusa >= 2.19; only sent when provided). Fields: first_name, last_name, phone, company, address_1, address_2, city, country_code, province, postal_code, metadata.'
+          },
+          labels: {
+            type: 'array',
+            description: 'create_shipment: shipping labels [{ tracking_number, tracking_url, label_url }].',
+            items: { type: 'object' }
+          },
+          no_notification: {
+            type: 'boolean',
+            description: 'Do not notify the customer (create_fulfillment, create_shipment, mark_as_delivered, cancel_fulfillment).'
+          },
+          metadata: {
+            type: 'object',
+            description: 'Fulfillment/shipment metadata.'
+          },
+          additional_data: {
+            type: 'object',
+            description: 'Additional data passed to workflow hooks (create_fulfillment, create_shipment).'
           }
         },
         required: ['action']
       }
   },
-  function: executeFunction
+  function: withMedusaErrorHints(executeFunction)
 };
 
 export { apiTool };

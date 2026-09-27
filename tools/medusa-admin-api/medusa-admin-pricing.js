@@ -4,6 +4,11 @@
  */
 
 import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { sentGatedFields, withGatedFields, withMedusaErrorHints } from "../../lib/medusa-version.js";
+
+// metadata en promociones existe desde Medusa 2.21 (en 2.18 el validador estricto lo rechaza):
+// sólo se envía si el caller lo pasa y un 400 "Unrecognized fields" se traduce a mensaje de versión.
+const PROMOTION_GATED_FIELDS = { metadata: '2.21' };
 
 async function handlePricingOperation(args) {
   const rawBaseUrl = process.env.MEDUSA_BASE_URL || 'http://localhost:9000';
@@ -193,13 +198,14 @@ async function createPromotion(baseUrl, headers, args) {
   if (args.status) promotionData.status = args.status;
   if (args.campaign_id) promotionData.campaign_id = args.campaign_id;
   if (args.rules) promotionData.rules = args.rules;
+  if (args.metadata !== undefined) promotionData.metadata = args.metadata;
 
   const url = `${baseUrl}/admin/promotions`;
-  return await makeRequest(url, {
+  return await withGatedFields(sentGatedFields(promotionData, PROMOTION_GATED_FIELDS), () => makeRequest(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(promotionData)
-  });
+  }));
 }
 
 async function updatePromotion(baseUrl, headers, args) {
@@ -241,13 +247,14 @@ async function updatePromotion(baseUrl, headers, args) {
   if (args.application_method) promotionData.application_method = args.application_method;
   if (args.rules) promotionData.rules = args.rules;
   if (args.status) promotionData.status = args.status;
+  if (args.metadata !== undefined) promotionData.metadata = args.metadata;
 
   const url = `${baseUrl}/admin/promotions/${args.promotion_id}`;
-  return await makeRequest(url, {
+  return await withGatedFields(sentGatedFields(promotionData, PROMOTION_GATED_FIELDS), () => makeRequest(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(promotionData)
-  });
+  }));
 }
 
 async function deletePromotion(baseUrl, headers, args) {
@@ -322,7 +329,7 @@ async function deleteCampaign(baseUrl, headers, args) {
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_pricing',
-    description: 'Comprehensive Medusa Admin pricing and promotions management tool supporting price lists, promotions, and campaigns. For Medusa v2 API.',
+    description: 'Comprehensive Medusa Admin pricing and promotions management tool supporting price lists, promotions, and campaigns (Medusa 2.17.2+, incl. 2.18 and 2.21.1). Promotion metadata on create_promotion/update_promotion requires Medusa >= 2.21 and is only sent when provided.',
     parameters: {
       type: 'object',
       properties: {
@@ -454,10 +461,14 @@ export const apiTool = {
           }
         },
         campaign_identifier: { type: 'string', description: 'Campaign identifier.' },
-        budget: { type: 'object', description: 'Campaign budget.' }
+        budget: { type: 'object', description: 'Campaign budget.' },
+        metadata: {
+          type: 'object',
+          description: 'Promotion metadata for create_promotion/update_promotion. Requires Medusa >= 2.21 (older stores reject it); only sent when provided.'
+        }
       },
       required: ['action']
     }
   },
-  function: handlePricingOperation
+  function: withMedusaErrorHints(handlePricingOperation)
 };
