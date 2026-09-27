@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Medusa.js MCP (Model Context Protocol) server that provides automated API tools for Medusa e-commerce backend operations. It focuses on admin API functionality including order management, cart operations, and fulfillment processing.
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 **Supports:** Local STDIO (npx) and Remote Streamable HTTP (Digital Ocean)
 
 ## Architecture
@@ -238,6 +238,11 @@ const response = await fetch('https://your-app.ondigitalocean.app/mcp', {
 
 ### Cross-cutting: `context` property
 Every tool exposes an optional `context` string in its input schema. Agents use it to explain *why* they are making a call. It is stripped before the args reach the tool function (never sent to Medusa) and forwarded to telemetry — doubling as an audit trail for mutating operations. Injected centrally in `transformToolsToMcp()` / `executeToolOptimized()` (`lib/tools.js`); telemetry routing lives in `lib/telemetry.js`.
+
+### Server instructions and per-store identity
+`initialize` returns `instructions` (`DEFAULT_SERVER_INSTRUCTIONS` in `lib/instructions.js`): data-access rules clients inject into the model's system prompt. Keep them short — they ride along in every conversation.
+
+`createStreamableHTTPHandler()` accepts `serverInfo` and `instructions` either as values or as `(req) => value | Promise<value>`, resolved on every `initialize`. Embedders serving one store (the boilerplate backend) use this to publish that store's `title` and `icons` (MCP 2025-11-25). A throwing resolver falls back to the default, so branding lookups never break `initialize`. Embedders should check `HTTP_HANDLER_FEATURES` (`lib/constants.js`) before relying on either.
 
 ## Security Notes
 

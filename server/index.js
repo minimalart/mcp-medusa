@@ -23,6 +23,7 @@ import { createStreamableHTTPHandler } from './transports/streamable-http.js';
 import { authMiddleware, corsMiddleware, requestLogger } from './middleware/auth.js';
 import { discoverTools, transformToolsToMcp, executeToolOptimized } from '../lib/tools.js';
 import { MCP_VERSION_HTTP, SERVER_INFO } from '../lib/constants.js';
+import { DEFAULT_SERVER_INSTRUCTIONS } from '../lib/instructions.js';
 import { getAuthorizationServerMetadata, getProtectedResourceMetadata } from '../lib/oauth.js';
 
 // Load environment variables
@@ -55,10 +56,8 @@ const mcpHandler = createStreamableHTTPHandler({
   discoverTools,
   transformToolsToMcp,
   executeToolOptimized,
-  serverInfo: {
-    name: SERVER_INFO.name,
-    version: SERVER_INFO.version
-  },
+  serverInfo: SERVER_INFO,
+  instructions: DEFAULT_SERVER_INSTRUCTIONS,
   protocolVersion: MCP_VERSION_HTTP
 });
 
