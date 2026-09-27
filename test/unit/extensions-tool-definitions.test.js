@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { toolPaths } from "../../tools/paths.js";
 import { discoverTools, transformToolsToMcp } from "../../lib/tools.js";
 import { TOOL_ACTIONS, listResourceEndpoints } from "../../lib/extension-resources.js";
+import { neverExposeReason } from "../../lib/extension-exclusions.js";
 
 const JSON_SCHEMA_TYPES = new Set(["string", "number", "integer", "boolean", "object", "array", "null"]);
 
@@ -102,6 +103,7 @@ test("declared calls use only /admin paths, known methods and no never-expose ro
       for (const pattern of NEVER) {
         assert.equal(pattern.test(ep.path), false, `${apiTool.definition.name} exposes ${ep.path}`);
       }
+      assert.equal(neverExposeReason(ep.path, { method: ep.method }), null, `${apiTool.definition.name} ${ep.path}`);
     }
   }
 });

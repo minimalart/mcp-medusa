@@ -23,39 +23,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import { EXCLUDED_ROUTES } from '../lib/extension-exclusions.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..');
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
 /**
- * Rutas que NO se exponen a propósito. `pattern` se compara contra el path de la
- * ruta (con `:param`) y `methods` limita la exclusión (omitido = todos).
+ * Rutas que NO se exponen a propósito (lib/extension-exclusions.js). `pattern`
+ * se compara contra el path de la ruta (con `:param`) y `methods` limita la
+ * exclusión (omitido = todos).
  */
-export const EXCLUDED_ROUTES = [
-  // Nunca exponer: secretos, datos personales, herramientas internas.
-  { pattern: /^\/admin\/ai-assistant\/keys(\/|$)/, reason: 'API keys de proveedores de IA (secretos)' },
-  { pattern: /^\/admin\/site-credentials(\/|$)/, reason: 'credenciales por tienda (secretos)' },
-  { pattern: /^\/admin\/checkout-links\/config$/, reason: 'devuelve la API key de Google Maps' },
-  { pattern: /^\/admin\/gift-card-experience\/deliveries\/:[^/]+\/secure-link$/, reason: 'link seguro de canje de gift card' },
-  { pattern: /^\/admin\/debug(\/|$)/, reason: 'debug interno (heap snapshots)' },
-  { pattern: /^\/admin\/maintenance(\/|$)/, reason: 'mantenimiento/backfills internos' },
-  { pattern: /^\/admin\/database-explorer(\/|$)/, reason: 'acceso crudo a la base de datos' },
-  { pattern: /^\/admin\/commerce-dashboard\/seed-orders$/, reason: 'siembra órdenes falsas' },
-  { pattern: /^\/admin\/ai-assistant\/threads\/:[^/]+\/messages\/stream$/, reason: 'SSE (streaming) no soportado por MCP' },
-  // Flujos de navegador / handshakes que no son operaciones de un operador.
-  { pattern: /^\/admin\/ai-assistant\/mcp-servers\/:[^/]+\/oauth\/start$/, reason: 'OAuth interactivo en navegador' },
-  { pattern: /^\/admin\/vimeo\/oauth\//, reason: 'OAuth interactivo en navegador' },
-  { pattern: /^\/admin\/media-library\/proxy$/, reason: 'proxy de bytes de imágenes (binario)' },
-  { pattern: /^\/admin\/kapso\/inbox-embed$/, reason: 'URL de embed del inbox de Kapso (puede llevar token de acceso)' },
-  { pattern: /^\/admin\/sites\/checkout-context$/, reason: 'handshake server-to-server del checkout con access_token' },
-  { pattern: /^\/admin\/marketplaces$/, reason: 'raíz del router dinámico: GET = /settings, POST sin handler' },
-  {
-    pattern: /^\/admin\/marketplaces\/:resource\/:id\/:action$/,
-    methods: ['GET'],
-    reason: 'GET con :action es alias de GET /:resource/:id (el handler ignora :action)',
-  },
-];
+export { EXCLUDED_ROUTES };
 
 function parseArgs(argv) {
   const flags = new Set(argv.filter((a) => a.startsWith('--')));
