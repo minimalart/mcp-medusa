@@ -1,5 +1,25 @@
 # MCP Medusa API Reference
 
+> **Fuente de verdad:** la definición de cada tool (`npm run list-tools`). Esta página resume; si difiere, gana la tool.
+
+## Cambios en 1.6.0
+
+Target Medusa **2.21.1**, compatible con **2.18.0**. Las acciones que necesitan una versión más nueva responden "Esta acción requiere Medusa >= X" si la tienda devuelve 404.
+
+**Eliminadas** (nunca tuvieron ruta real; ahora devuelven `{ error, removed: true }` con la alternativa, sin llamar a la tienda): payments `update_payment_collection`, `cancel_payment`; regions `update_fulfillment_set`; returns `update_claim`, `update_order_edit`; users `create_user` (usar invites); gift_cards `delete`; v2 resource `auth` (usar `mfa_factors`).
+
+**Cambiadas:**
+- payments: `list_payment_collections`/`get_payment_collection` requieren `order_id`; `capture_payment`/`refund_payment` rechazan `amount <= 0`; nuevas `create_payment_collection`, `mark_payment_collection_as_paid`, `create_payment_session`, `list_payment_providers`, `list_refund_reasons`.
+- regions: `create_fulfillment_set` requiere `location_id` (se crea en la stock location); nuevas acciones de service zones.
+- returns: las order edits se direccionan por `order_id` (`create_order_edit`, items, shipping method, `request`, `confirm`, `cancel`); `receive_return` con `items` completa la recepción y repone stock.
+- draft_orders: `convert_to_order` usa `/convert-to-order`; los line items pasan por el flujo de edición (`begin_edit` … `confirm_edit`).
+- product_options: todo en `/admin/product-options`; con `product_id`, create vincula y delete desvincula.
+- users: `update_user` ya no acepta `role`; nuevas `get_current_user` y `list_auth_providers` (2.20+).
+- orders: nuevas `transfer_to_guest`, `cancel_transfer`, `create_fulfillment`, `create_shipment`, `mark_as_delivered`.
+- inventory: `unit_of_measure` (2.20+), `export_items` (2.19+). pricing: `metadata` en promociones (2.21+). v2: `search` (2.19+), search indexes (2.20+), store credit, `request` con PUT.
+
+**Nuevas tools** para las extensiones del boilerplate: `manage_minimalart_{commerce,logistics,integrations,whatsapp,growth,stores,ai_assistant}` y `manage_store_memory` (ver `CLAUDE.md`). `action: "describe"` documenta cada resource sin llamar a la tienda.
+
 ## HTTP Endpoints
 
 ### Health Check
@@ -319,7 +339,6 @@ Region and shipping management.
 | `list_fulfillment_providers` | - | List fulfillment providers |
 | `list_fulfillment_sets` | - | List fulfillment sets |
 | `create_fulfillment_set` | `name`, `type` | Create fulfillment set |
-| `update_fulfillment_set` | `fulfillment_set_id` | Update fulfillment set |
 | `delete_fulfillment_set` | `fulfillment_set_id` | Delete fulfillment set |
 
 ### manage_medusa_admin_pricing
@@ -356,12 +375,10 @@ Payment operations.
 |--------|-----------------|-------------|
 | `list_payment_collections` | - | List payment collections |
 | `get_payment_collection` | `id` | Get payment collection |
-| `update_payment_collection` | `id` | Update payment collection |
 | `delete_payment_collection` | `id` | Delete payment collection |
 | `list_payments` | - | List payments |
 | `get_payment` | `payment_id` | Get payment |
 | `capture_payment` | `payment_id` | Capture payment |
-| `cancel_payment` | `payment_id` | Cancel payment |
 | `refund_payment` | `payment_id`, `amount` | Refund payment |
 | `list_refunds` | - | List refunds |
 | `get_refund` | `refund_id` | Get refund |
@@ -383,11 +400,9 @@ Returns and exchanges management.
 | `cancel_exchange` | `exchange_id` | Cancel exchange |
 | `list_claims` | - | List claims |
 | `get_claim` | `claim_id` | Get claim |
-| `update_claim` | `claim_id` | Update claim |
 | `cancel_claim` | `claim_id` | Cancel claim |
 | `list_order_edits` | - | List order edits |
 | `get_order_edit` | `order_edit_id` | Get order edit |
-| `update_order_edit` | `order_edit_id` | Update order edit |
 | `delete_order_edit` | `order_edit_id` | Delete order edit |
 | `complete_order_edit` | `order_edit_id` | Complete order edit |
 | `cancel_order_edit` | `order_edit_id` | Cancel order edit |
@@ -452,7 +467,6 @@ User and authentication management.
 |--------|-----------------|-------------|
 | `list_users` | - | List users |
 | `get_user` | `id` | Get user |
-| `create_user` | `email` | Create user |
 | `update_user` | `id` | Update user |
 | `delete_user` | `id` | Delete user |
 | `list_invites` | - | List invites |

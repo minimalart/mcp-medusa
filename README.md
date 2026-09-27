@@ -417,21 +417,31 @@ After configuring Claude Desktop:
 
 | Tool | Description | Key Actions |
 |------|-------------|-------------|
-| `manage_medusa_admin_orders` | Order management & fulfillment | `list`, `get`, `cancel`, `complete`, `archive`, `transfer` |
-| `manage_medusa_admin_draft_orders` | Cart-like draft order operations | `create`, `list`, `get`, `delete`, `convert_to_order` |
+| `manage_medusa_admin_orders` | Order management & fulfillment | `list`, `get`, `cancel`, `complete`, `archive`, `transfer`, `transfer_to_guest`, `create_fulfillment`, `create_shipment`, `mark_as_delivered` |
+| `manage_medusa_admin_draft_orders` | Draft orders (line items via Medusa's edit flow) | `create`, `list`, `get`, `update`, `delete`, `begin_edit`, `confirm_edit`, `convert_to_order` |
 | `manage_medusa_admin_products` | Product & variant management | `list`, `get`, `create`, `update`, `delete`, `list_variants` |
 | `manage_medusa_admin_customers` | Customer & group management | `list`, `get`, `create`, `update`, `delete`, `list_groups` |
 | `manage_medusa_admin_collections` | Collection management | `list`, `get`, `create`, `update`, `delete`, `add_products` |
 | `manage_medusa_admin_inventory` | Inventory & stock management | `list_items`, `list_locations`, `list_levels`, `create_reservation` |
 | `manage_medusa_admin_regions` | Regions & shipping | `list_regions`, `list_shipping_options`, `create_region` |
 | `manage_medusa_admin_pricing` | Pricing & promotions | `list_price_lists`, `list_promotions`, `list_campaigns` |
-| `manage_medusa_admin_payments` | Payment operations | `list_payments`, `capture_payment`, `refund_payment` |
-| `manage_medusa_admin_returns` | Returns & exchanges | `list_returns`, `list_exchanges`, `list_claims` |
-| `manage_medusa_admin_gift_cards` | Gift card management | `list`, `get`, `create`, `update`, `delete` |
+| `manage_medusa_admin_payments` | Payment operations | `list_payments`, `capture_payment`, `refund_payment`, `mark_payment_collection_as_paid` |
+| `manage_medusa_admin_returns` | Returns, exchanges, claims & order edits | `list_returns`, `receive_return`, `list_claims`, `create_order_edit`, `request_order_edit` |
+| `manage_medusa_admin_gift_cards` | Gift card management | `list`, `get`, `create`, `update`, `list_orders` |
 | `manage_medusa_admin_taxes` | Tax management | `list_tax_rates`, `list_tax_regions`, `create_tax_rate` |
 | `manage_medusa_admin_sales_channels` | Sales channel management | `list`, `get`, `create`, `add_products` |
 | `manage_medusa_admin_users` | User & auth management | `list_users`, `list_invites`, `list_api_keys` |
-| `manage_medusa_admin_v2` | Additive Medusa v2 Admin API coverage | `list`, `get`, `request` |
+| `manage_medusa_admin_v2` | Newer v2 resources (search, search indexes, store credit…) + generic request | `list`, `get`, `search`, `request` |
+| `manage_minimalart_extensions` | Boilerplate content extras (banners, blog, brands, landings, media, videos, dashboards) | `list`, `get`, `create`, `update`, `delete`, `sub_action`, `describe` |
+| `manage_minimalart_commerce` | Loyalty, gift-card experience, recurring orders, abandoned carts, bundles, B2B | same engine |
+| `manage_minimalart_logistics` | Andreani, Correo Argentino, own delivery, pickup | same engine |
+| `manage_minimalart_integrations` | ERP, Typesense, GA4, Clarity, Merchant, newsletter, MercadoLibre | same engine |
+| `manage_minimalart_whatsapp` | Kapso templates, bot, flows, conversations | same engine |
+| `manage_minimalart_growth` | SEO/GEO, recommendations, catalogador, comments, PDF catalogs | same engine |
+| `manage_minimalart_stores` | Multistore sites, store config, catalog imports, app settings | same engine |
+| `manage_minimalart_ai_assistant` | Backoffice AI agents, skills, workflows, MCP servers | same engine |
+| `manage_store_memory` | Store AI memory (search, save as pending), documents, proposals | same engine |
+| `report_mcp_feedback` | Report problems with the MCP itself (does not touch store data) | `message`, `tool_name`, `severity` |
 
 ## 🧪 Testing with Claude
 
