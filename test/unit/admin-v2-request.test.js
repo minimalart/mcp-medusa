@@ -193,3 +193,25 @@ describe("search, search indexes and store credit", () => {
     await assert.rejects(() => apiTool.function({ action: "debit_store_credit_account", id: "sca_1", amount: 0 }), /greater than 0/);
   });
 });
+
+describe("request comparte la lista de nunca-exponer de las extensiones", () => {
+  for (const [label, args] of [
+    ["Google Maps key", { path: "/admin/checkout-links/config" }],
+    ["gift card secure link", { method: "POST", path: "/admin/gift-card-experience/deliveries/gcd_1/secure-link" }],
+    ["Kapso inbox embed", { path: "/admin/kapso/inbox-embed" }],
+    ["checkout documents (query)", { path: "/admin/orders/order_1/checkout", query: { documents: 1 } }],
+    ["checkout documents (inline)", { path: "/admin/orders/order_1/checkout?documents=1" }],
+  ]) {
+    test(`bloquea ${label} sin llamar a la tienda`, async () => {
+      const result = await apiTool.function({ action: "request", method: "GET", ...args });
+      assert.equal(result.blocked, true);
+      assert.match(result.error, /never exposed through MCP/);
+      assert.equal(fetchCalls.length, 0);
+    });
+  }
+
+  test("el checkout de una orden sin documents sigue permitido", async () => {
+    await apiTool.function({ action: "request", method: "GET", path: "/admin/orders/order_1/checkout" });
+    assert.equal(lastCall().path, "/admin/orders/order_1/checkout");
+  });
+});

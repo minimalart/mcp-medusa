@@ -11,6 +11,7 @@
 
 import { buildMedusaUrl, makeRequest, normalizeBaseUrl } from "../../lib/medusa-client.js";
 import { withMedusaErrorHints, withMinVersion } from "../../lib/medusa-version.js";
+import { neverExposeReason } from "../../lib/extension-exclusions.js";
 
 /**
  * Recursos conocidos para list/get. `list`/`get` indican qué rutas GET existen
@@ -139,7 +140,7 @@ function resolveRequestTarget(path, query) {
   return { url, normalized };
 }
 
-function assertRequestAllowed(method, normalizedPath) {
+function assertRequestAllowed(method, normalizedPath, search = "") {
   const isAdmin = normalizedPath.startsWith("/admin/");
   const isAuth = normalizedPath === "/auth" || normalizedPath.startsWith("/auth/");
   if (!isAdmin && !isAuth) {
@@ -150,6 +151,16 @@ function assertRequestAllowed(method, normalizedPath) {
   if (blocked) {
     return {
       error: `Blocked path: ${normalizedPath} is not available through manage_medusa_admin_v2 (${blocked.reason}). Use the Medusa admin dashboard for this operation.`,
+      blocked: true,
+    };
+  }
+
+  // Misma lista que las tools de extensiones (`lib/extension-exclusions.js`): sin
+  // esto, `request` era la puerta trasera a todo lo que ellas no declaran.
+  const excluded = neverExposeReason(`${normalizedPath}${search}`, { method });
+  if (excluded) {
+    return {
+      error: `Blocked path: ${normalizedPath} is never exposed through MCP (${excluded}). Use the admin dashboard for this operation.`,
       blocked: true,
     };
   }
@@ -223,7 +234,7 @@ async function executeFunction(args = {}) {
         return { error: `Unsupported method: ${method}. Allowed: ${ALLOWED_METHODS.join(", ")}` };
       }
       const { url, normalized } = resolveRequestTarget(path, query);
-      const blocked = assertRequestAllowed(requestMethod, normalized);
+      const blocked = assertRequestAllowed(requestMethod, normalized, new URL(url).search);
       if (blocked) return blocked;
 
       const request = {

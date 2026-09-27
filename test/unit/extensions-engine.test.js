@@ -420,3 +420,14 @@ test("otros errores no llevan la pista del 404", async () => {
   assert.equal(result.status, 500);
   assert.equal("hint" in result, false);
 });
+
+test("un 401 por MFA (Medusa >= 2.20) explica cómo configurar el MCP", async () => {
+  nextResponse = () =>
+    new Response(JSON.stringify({ message: "MFA verification is required to access this resource" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
+  const result = await commerceTool.function({ resource: "loyalty_programs", action: "list" });
+  assert.equal(result.status, 401);
+  assert.match(result.hint, /MEDUSA_AUTH_TYPE=api-key/);
+});
