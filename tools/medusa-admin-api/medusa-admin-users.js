@@ -1,22 +1,32 @@
 /**
  * Comprehensive Medusa Admin Users & Authentication Management Tool
  * Supports user management, invites, and API keys
+ *
+ * Medusa v2 no tiene POST /admin/users: los usuarios admin se crean invitándolos
+ * (POST /admin/invites) y el invitado acepta con POST /admin/invites/accept usando
+ * su propio token + credenciales (eso no se expone acá).
+ * La ruta POST /admin/users/{id}/reset-password (2.20+) devuelve un token de reseteo en
+ * vivo, así que tampoco se expone (y manage_medusa_admin_v2 lo bloquea).
  */
 
 import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { withMedusaErrorHints, withMinVersion } from "../../lib/medusa-version.js";
 
-function unsupportedOn404(error, message) {
-  if (error?.status === 404) {
-    return { error: message, unsupported: true };
-  }
-  throw error;
-}
+const REMOVED_ACTIONS = {
+  create_user:
+    'create_user was removed: Medusa v2 has no POST /admin/users route. Invite the person with create_invite (email, optional roles); ' +
+    'they accept the invite themselves and set their own password.'
+};
 
 async function handleUsersOperation(args) {
   const rawBaseUrl = process.env.MEDUSA_BASE_URL || 'http://localhost:9000';
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
-  
+
+  if (REMOVED_ACTIONS[args.action]) {
+    return { error: REMOVED_ACTIONS[args.action], removed: true };
+  }
+
   if (!apiKey || !hasMedusaCredentials()) {
     throw new Error(missingCredentialsMessage());
   }
@@ -28,8 +38,10 @@ async function handleUsersOperation(args) {
       return await listUsers(baseUrl, headers, args);
     case 'get_user':
       return await getUser(baseUrl, headers, args);
-    case 'create_user':
-      return await createUser(baseUrl, headers, args);
+    case 'get_current_user':
+      return await getCurrentUser(baseUrl, headers, args);
+    case 'list_auth_providers':
+      return await listUserAuthProviders(baseUrl, headers, args);
     case 'update_user':
       return await updateUser(baseUrl, headers, args);
     case 'delete_user':
@@ -78,34 +90,32 @@ async function getUser(baseUrl, headers, args) {
   return await makeRequest(url, { headers });
 }
 
-async function createUser(baseUrl, headers, args) {
-  if (!args.email) throw new Error('User email is required');
-  
-  const userData = { email: args.email };
-  if (args.first_name) userData.first_name = args.first_name;
-  if (args.last_name) userData.last_name = args.last_name;
-  if (args.role) userData.role = args.role;
-  if (args.metadata) userData.metadata = args.metadata;
+async function getCurrentUser(baseUrl, headers) {
+  const url = `${baseUrl}/admin/users/me`;
+  return await makeRequest(url, { headers });
+}
 
-  const url = `${baseUrl}/admin/users`;
-  try {
-    return await makeRequest(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(userData)
-    });
-  } catch (error) {
-    return unsupportedOn404(error, 'Direct user creation is not exposed by this Medusa backend; use create_invite instead.');
-  }
+/**
+ * Proveedores de autenticación vinculados a un usuario (p. ej. emailpass, google).
+ * GET /admin/users/{id}/auth-providers — Medusa >= 2.20.
+ */
+async function listUserAuthProviders(baseUrl, headers, args) {
+  if (!args.id) throw new Error('User ID is required');
+  const url = `${baseUrl}/admin/users/${encodeURIComponent(args.id)}/auth-providers`;
+  return await withMinVersion('2.20', () => makeRequest(url, { headers }));
 }
 
 async function updateUser(baseUrl, headers, args) {
   if (!args.id) throw new Error('User ID is required');
-  
+  if (args.role !== undefined || args.roles !== undefined) {
+    // AdminUpdateUser es { first_name, last_name, avatar_url, metadata } (strict): role devolvía 400.
+    throw new Error('Roles cannot be changed with update_user in Medusa v2. Use manage_medusa_admin_v2 action=request POST /admin/users/{id}/roles { roles: [...] } (requires RBAC).');
+  }
+
   const userData = {};
   if (args.first_name) userData.first_name = args.first_name;
   if (args.last_name) userData.last_name = args.last_name;
-  if (args.role) userData.role = args.role;
+  if (args.avatar_url !== undefined) userData.avatar_url = args.avatar_url;
   if (args.metadata) userData.metadata = args.metadata;
 
   const url = `${baseUrl}/admin/users/${args.id}`;
@@ -195,7 +205,7 @@ async function getApiKey(baseUrl, headers, args) {
 async function createApiKey(baseUrl, headers, args) {
   if (!args.title) throw new Error('API key title is required');
   if (!args.type) throw new Error('API key type is required');
-  
+
   const apiKeyData = {
     title: args.title,
     type: args.type
@@ -211,7 +221,7 @@ async function createApiKey(baseUrl, headers, args) {
 
 async function updateApiKey(baseUrl, headers, args) {
   if (!args.api_key_id) throw new Error('API key ID is required');
-  
+
   const apiKeyData = {};
   if (args.title) apiKeyData.title = args.title;
 
@@ -242,14 +252,18 @@ async function revokeApiKey(baseUrl, headers, args) {
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_users',
-    description: 'Comprehensive Medusa Admin users and authentication management tool supporting user operations, invites, and API key management.',
+    description:
+      'Medusa Admin users, invites and API keys (Medusa 2.17.2+, incl. 2.18 and 2.21.1). Users: list_users, get_user, get_current_user (the authenticated admin), update_user (first_name, last_name, avatar_url, metadata), delete_user, ' +
+      'list_auth_providers (auth providers linked to a user, e.g. emailpass/google; Medusa >= 2.20). ' +
+      'New admins are added with create_invite (email, optional roles): Medusa emits invite.created (the store usually emails the invite link) and the person accepts it and sets their own password; resend_invite re-sends it. create_user was removed (no such route in Medusa v2). ' +
+      'API keys: list/get/create (title + type secret|publishable; the secret token is only returned once)/update/delete/revoke.',
     parameters: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
           enum: [
-            'list_users', 'get_user', 'create_user', 'update_user', 'delete_user',
+            'list_users', 'get_user', 'get_current_user', 'list_auth_providers', 'update_user', 'delete_user',
             'list_invites', 'get_invite', 'create_invite', 'delete_invite', 'resend_invite',
             'list_api_keys', 'get_api_key', 'create_api_key', 'update_api_key', 'delete_api_key', 'revoke_api_key'
           ],
@@ -264,6 +278,7 @@ export const apiTool = {
         email: { type: 'string', description: 'User/invite email.' },
         first_name: { type: 'string', description: 'User first name.' },
         last_name: { type: 'string', description: 'User last name.' },
+        avatar_url: { type: 'string', description: 'User avatar URL (update_user).' },
         roles: {
           type: 'array',
           items: { type: 'string' },
@@ -277,5 +292,5 @@ export const apiTool = {
       required: ['action']
     }
   },
-  function: handleUsersOperation
+  function: withMedusaErrorHints(handleUsersOperation)
 };
