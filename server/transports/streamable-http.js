@@ -15,6 +15,9 @@ import {
   MCP_VERSION_HTTP,
 } from '../../lib/constants.js';
 import { MCP_PROMPTS, getMcpPrompt } from '../../lib/prompts.js';
+import { normalizeInstructions } from '../../lib/instructions.js';
+
+const FALLBACK_SERVER_INFO = { name: 'mcp-medusa', version: '1.1.0' };
 
 /**
  * Session storage (in-memory for simplicity)
@@ -31,7 +34,12 @@ export class StreamableHTTPHandler {
     this.discoverTools = options.discoverTools;
     this.transformToolsToMcp = options.transformToolsToMcp;
     this.executeToolOptimized = options.executeToolOptimized;
-    this.serverInfo = options.serverInfo || { name: 'mcp-medusa', version: '1.1.0' };
+    // `serverInfo` e `instructions` aceptan un valor fijo o una función
+    // `(req) => valor | Promise<valor>`, resuelta en cada `initialize`. La forma
+    // dinámica es para quien embebe el handler y sirve a una tienda concreta: el
+    // nombre, el ícono (`icons`, MCP 2025-11-25) y las reglas de ESA tienda.
+    this.serverInfo = options.serverInfo || FALLBACK_SERVER_INFO;
+    this.instructions = options.instructions;
     this.protocolVersion = options.protocolVersion || MCP_VERSION_HTTP;
     this.supportedProtocolVersions =
       options.supportedProtocolVersions || MCP_SUPPORTED_PROTOCOL_VERSIONS;
@@ -135,13 +143,13 @@ export class StreamableHTTPHandler {
     // Handle batch requests
     if (Array.isArray(body)) {
       const results = await Promise.all(
-        body.map(request => this.processJsonRpcRequest(request, session))
+        body.map(request => this.processJsonRpcRequest(request, session, req))
       );
       return this.sendJsonResponse(res, results.filter(r => r !== null));
     }
 
     // Handle single request
-    const result = await this.processJsonRpcRequest(body, session);
+    const result = await this.processJsonRpcRequest(body, session, req);
 
     // Check if client accepts SSE for streaming response
     const acceptsSSE = req.headers.accept?.includes('text/event-stream');
@@ -219,7 +227,7 @@ export class StreamableHTTPHandler {
   /**
    * Process a single JSON-RPC request
    */
-  async processJsonRpcRequest(request, session) {
+  async processJsonRpcRequest(request, session, req) {
     const { jsonrpc, id, method, params } = request;
 
     // Validate JSON-RPC version
@@ -231,7 +239,7 @@ export class StreamableHTTPHandler {
     const isNotification = id === undefined;
 
     try {
-      const result = await this.executeMethod(method, params || {}, session);
+      const result = await this.executeMethod(method, params || {}, session, req);
 
       if (isNotification) {
         return null; // No response for notifications
@@ -254,10 +262,10 @@ export class StreamableHTTPHandler {
   /**
    * Execute MCP method
    */
-  async executeMethod(method, params, session) {
+  async executeMethod(method, params, session, req) {
     switch (method) {
       case 'initialize':
-        return this.handleInitialize(params, session);
+        return this.handleInitialize(params, session, req);
 
       case 'notifications/initialized':
         // Client notification that it's initialized - no response needed
@@ -289,7 +297,21 @@ export class StreamableHTTPHandler {
   /**
    * Handle initialize method
    */
-  async handleInitialize(params, session) {
+  /**
+   * Resuelve una opción fija o `(req) => valor`. Si el resolver falla devuelve
+   * `fallback`: una marca que no se pudo leer no puede tirar el `initialize`.
+   */
+  async resolveOption(option, req, fallback) {
+    if (typeof option !== 'function') return option;
+    try {
+      return await option(req);
+    } catch (error) {
+      console.error('StreamableHTTP: option resolver failed:', error);
+      return fallback;
+    }
+  }
+
+  async handleInitialize(params, session, req) {
     session.initialized = true;
     session.clientInfo = params.clientInfo;
     const requestedProtocol = params.protocolVersion;
@@ -302,13 +324,21 @@ export class StreamableHTTPHandler {
       throw error;
     }
 
+    const resolvedInfo = await this.resolveOption(this.serverInfo, req, FALLBACK_SERVER_INFO);
+    const serverInfo =
+      resolvedInfo && typeof resolvedInfo === 'object' ? resolvedInfo : FALLBACK_SERVER_INFO;
+    const instructions = normalizeInstructions(
+      await this.resolveOption(this.instructions, req, undefined),
+    );
+
     return {
       protocolVersion: requestedProtocol || this.protocolVersion,
-      serverInfo: this.serverInfo,
+      serverInfo,
       capabilities: {
         tools: {},
         prompts: {},
-      }
+      },
+      ...(instructions ? { instructions } : {}),
     };
   }
 

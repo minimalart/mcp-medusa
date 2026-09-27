@@ -6,6 +6,7 @@ import { authenticateRequest, corsHeaders } from '../../lib/auth.js';
 import { createJsonRpcResponse, createJsonRpcError, parseJsonRpcRequest, JSON_RPC_ERRORS } from '../../lib/jsonrpc.js';
 import { MCP_VERSION_HTTP, SERVER_INFO, CAPABILITIES, HTTP_STATUS } from '../../lib/constants.js';
 import { withPerformanceMonitoring, PerformanceTimer } from '../../lib/performance.js';
+import { DEFAULT_SERVER_INSTRUCTIONS } from '../../lib/instructions.js';
 import dotenv from 'dotenv';
 
 // Initialize environment once
@@ -22,7 +23,8 @@ const HEALTH_CHECK_RESPONSE = {
 const INITIALIZE_RESPONSE = {
   protocolVersion: MCP_VERSION_HTTP,
   capabilities: CAPABILITIES,
-  serverInfo: SERVER_INFO
+  serverInfo: SERVER_INFO,
+  instructions: DEFAULT_SERVER_INSTRUCTIONS
 };
 
 // Freeze objects for V8 optimizations

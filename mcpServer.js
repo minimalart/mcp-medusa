@@ -11,6 +11,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { discoverTools, executeToolOptimized, transformToolsToMcp } from "./lib/tools.js";
 import { SERVER_INFO } from "./lib/constants.js";
+import { DEFAULT_SERVER_INSTRUCTIONS } from "./lib/instructions.js";
 
 import path from "path";
 import { fileURLToPath } from "url";
@@ -56,12 +57,14 @@ async function run() {
   const server = new Server(
     {
       name: SERVER_NAME,
+      title: SERVER_INFO.title,
       version: SERVER_INFO.version,
     },
     {
       capabilities: {
         tools: {},
       },
+      instructions: DEFAULT_SERVER_INSTRUCTIONS,
     }
   );
   
