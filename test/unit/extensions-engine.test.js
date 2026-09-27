@@ -406,3 +406,17 @@ test("custom tools built with the engine expose the shared schema", () => {
   assert.deepEqual(tool.definition.parameters.properties.resource.enum, ["things"]);
   assert.match(tool.definition.description, /- things \[LGCUD\]: Things/);
 });
+
+test("un 404 explica que la extensión puede no estar instalada en esa tienda", async () => {
+  nextResponse = () => new Response("Not Found", { status: 404, headers: { "content-type": "text/plain" } });
+  const result = await commerceTool.function({ resource: "loyalty_programs", action: "list" });
+  assert.equal(result.status, 404);
+  assert.match(result.hint, /no está instalada en esta tienda/);
+});
+
+test("otros errores no llevan la pista del 404", async () => {
+  nextResponse = () => new Response("boom", { status: 500, headers: { "content-type": "text/plain" } });
+  const result = await commerceTool.function({ resource: "loyalty_programs", action: "list" });
+  assert.equal(result.status, 500);
+  assert.equal("hint" in result, false);
+});
