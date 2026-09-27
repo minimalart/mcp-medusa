@@ -23,5 +23,6 @@ export const toolPaths = [
   'medusa-admin-api/medusa-admin-ext-whatsapp.js',
   'medusa-admin-api/medusa-admin-ext-growth.js',
   'medusa-admin-api/medusa-admin-ext-stores.js',
-  'medusa-admin-api/medusa-admin-ext-ai-assistant.js'
+  'medusa-admin-api/medusa-admin-ext-ai-assistant.js',
+  'medusa-admin-api/medusa-admin-store-memory.js'
 ];
