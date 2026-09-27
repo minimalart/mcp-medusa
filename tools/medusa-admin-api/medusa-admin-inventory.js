@@ -1,9 +1,31 @@
 /**
  * Comprehensive Medusa Admin Inventory Management Tool
  * Supports inventory items, stock locations, and reservation management
+ *
+ * Versiones:
+ *   - unit_of_measure y cantidades fraccionarias: Medusa >= 2.20 (en 2.18 el
+ *     validador estricto rechaza unit_of_measure, por eso sólo se envía si viene).
+ *   - POST /admin/inventory-items/export: Medusa >= 2.19.
  */
 
-import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { sentGatedFields, withGatedFields, withMedusaErrorHints, withMinVersion } from "../../lib/medusa-version.js";
+
+// Campos de inventory item que sólo existen desde cierta versión de Medusa.
+const INVENTORY_ITEM_GATED_FIELDS = { unit_of_measure: '2.20' };
+
+/**
+ * Campos adicionales de inventory item (presentes en el validador desde 2.17.2,
+ * salvo unit_of_measure). Sólo se envían si el caller los pasa.
+ */
+function applyOptionalItemFields(itemData, args, { allowLocationLevels = false } = {}) {
+  for (const key of ['title', 'description', 'thumbnail', 'unit_of_measure']) {
+    if (args[key] !== undefined) itemData[key] = args[key];
+  }
+  if (args.requires_shipping !== undefined) itemData.requires_shipping = args.requires_shipping;
+  if (allowLocationLevels && Array.isArray(args.location_levels)) itemData.location_levels = args.location_levels;
+  return itemData;
+}
 
 /**
  * Main function to handle all inventory-related operations.
@@ -30,6 +52,8 @@ async function handleInventoryOperation(args) {
       return await updateInventoryItem(baseUrl, headers, args);
     case 'delete_item':
       return await deleteInventoryItem(baseUrl, headers, args);
+    case 'export_items':
+      return await exportInventoryItems(baseUrl, headers, args);
     case 'list_locations':
       return await listStockLocations(baseUrl, headers, args);
     case 'get_location':
@@ -88,13 +112,14 @@ async function createInventoryItem(baseUrl, headers, args) {
   if (args.height) itemData.height = args.height;
   if (args.width) itemData.width = args.width;
   if (args.metadata) itemData.metadata = args.metadata;
+  applyOptionalItemFields(itemData, args, { allowLocationLevels: true });
 
   const url = `${baseUrl}/admin/inventory-items`;
-  return await makeRequest(url, {
+  return await withGatedFields(sentGatedFields(itemData, INVENTORY_ITEM_GATED_FIELDS), () => makeRequest(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(itemData)
-  });
+  }));
 }
 
 async function updateInventoryItem(baseUrl, headers, args) {
@@ -111,13 +136,31 @@ async function updateInventoryItem(baseUrl, headers, args) {
   if (args.height) itemData.height = args.height;
   if (args.width) itemData.width = args.width;
   if (args.metadata) itemData.metadata = args.metadata;
+  applyOptionalItemFields(itemData, args);
 
   const url = `${baseUrl}/admin/inventory-items/${args.id}`;
-  return await makeRequest(url, {
+  return await withGatedFields(sentGatedFields(itemData, INVENTORY_ITEM_GATED_FIELDS), () => makeRequest(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(itemData)
-  });
+  }));
+}
+
+/**
+ * Exporta inventory items a CSV de forma asíncrona (Medusa >= 2.19).
+ * POST /admin/inventory-items/export → 202 { transaction_id }. Los filtros van por
+ * query string (mismos que list_items); el archivo se entrega como notificación
+ * en el admin cuando el workflow termina.
+ */
+async function exportInventoryItems(baseUrl, headers, args) {
+  const url = new URL(`${baseUrl}/admin/inventory-items/export`);
+  const filters = { q: args.q, sku: args.sku, origin_country: args.origin_country, ...(args.query || {}) };
+  Object.entries(filters).forEach(([key, value]) => appendQueryParam(url.searchParams, key, value));
+  return await withMinVersion('2.19', () => makeRequest(url.toString(), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({})
+  }));
 }
 
 async function deleteInventoryItem(baseUrl, headers, args) {
@@ -272,14 +315,18 @@ async function deleteReservation(baseUrl, headers, args) {
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_inventory',
-    description: 'Comprehensive Medusa Admin inventory management tool supporting inventory items, stock locations, levels, and reservations.',
+    description:
+      'Medusa Admin inventory (Medusa 2.17.2+, incl. 2.18 and 2.21.1): inventory items, stock locations, location levels and reservations. ' +
+      'create_item/update_item accept sku, title, description, thumbnail, requires_shipping, dimensions, codes, metadata, location_levels (create) and unit_of_measure (Medusa >= 2.20, only sent when provided). ' +
+      'Quantities (stocked_quantity, incoming_quantity, reservation quantity) can be fractional on Medusa >= 2.20 (e.g. 1.5 kg with unit_of_measure "kg"); use integers on older stores. ' +
+      'export_items (Medusa >= 2.19) starts an asynchronous CSV export (returns transaction_id; the file arrives as an admin notification).',
     parameters: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
           enum: [
-            'list_items', 'get_item', 'create_item', 'update_item', 'delete_item',
+            'list_items', 'get_item', 'create_item', 'update_item', 'delete_item', 'export_items',
             'list_locations', 'get_location', 'create_location', 'update_location', 'delete_location',
             'list_levels', 'update_level',
             'list_reservations', 'create_reservation', 'update_reservation', 'delete_reservation'
@@ -364,27 +411,52 @@ export const apiTool = {
         },
         stocked_quantity: {
           type: 'number',
-          description: 'Stocked quantity.'
+          description: 'Stocked quantity (fractional values need Medusa >= 2.20).'
         },
         incoming_quantity: {
           type: 'number',
-          description: 'Incoming quantity.'
+          description: 'Incoming quantity (fractional values need Medusa >= 2.20).'
         },
         quantity: {
           type: 'number',
-          description: 'Reservation quantity.'
+          description: 'Reservation quantity (fractional values need Medusa >= 2.20).'
         },
         description: {
           type: 'string',
-          description: 'Reservation description.'
+          description: 'Reservation description, or inventory item description (create_item/update_item).'
         },
         metadata: {
           type: 'object',
           description: 'Additional metadata.'
+        },
+        title: {
+          type: 'string',
+          description: 'Inventory item title (create_item/update_item).'
+        },
+        thumbnail: {
+          type: 'string',
+          description: 'Inventory item thumbnail URL (create_item/update_item).'
+        },
+        requires_shipping: {
+          type: 'boolean',
+          description: 'Whether the inventory item requires shipping (create_item/update_item).'
+        },
+        unit_of_measure: {
+          type: 'string',
+          description: 'Unit of measure, e.g. "kg", "m", "l" (create_item/update_item). Requires Medusa >= 2.20; only sent when provided.'
+        },
+        location_levels: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'create_item: initial stock per location, [{ location_id, stocked_quantity?, incoming_quantity? }].'
+        },
+        query: {
+          type: 'object',
+          description: 'export_items: additional inventory list filters sent as query params (e.g. { "location_levels": { "location_id": "sloc_..." } }).'
         }
       },
       required: ['action']
     }
   },
-  function: handleInventoryOperation
+  function: withMedusaErrorHints(handleInventoryOperation)
 };
