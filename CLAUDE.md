@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Medusa.js MCP (Model Context Protocol) server that provides automated API tools for Medusa e-commerce backend operations. It focuses on admin API functionality including order management, cart operations, and fulfillment processing.
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Supports:** Local STDIO (npx) and Remote Streamable HTTP (Digital Ocean)
 
 ## Architecture
@@ -219,9 +219,11 @@ const response = await fetch('https://your-app.ondigitalocean.app/mcp', {
 
 ## Available Tools
 
-### Medusa Admin Tools (14 comprehensive tools covering 200+ API actions)
-- **manage_medusa_admin_orders**: Order management with cancel, complete, archive, transfer, and fulfillment operations
-- **manage_medusa_admin_draft_orders**: Cart-like functionality with line item management and order conversion
+Targets Medusa **2.21.1** while staying compatible with **2.18.0** (the boilerplate's current version). Actions whose route is newer than 2.18 are wrapped with `withMinVersion()` (`lib/medusa-version.js`): a 404 becomes "Esta acción requiere Medusa >= X". Fields 2.18 rejects (`unit_of_measure`, promotion `metadata`, fulfillment `delivery_address`) are only sent when the caller passes them. Check routes with `node scripts/medusa-openapi-coverage.js --routes`.
+
+### Medusa Admin Tools (core)
+- **manage_medusa_admin_orders**: Order management: cancel, complete, archive, transfer (incl. `transfer_to_guest`), fulfillments, shipments, mark as delivered
+- **manage_medusa_admin_draft_orders**: Draft orders; line items go through Medusa's edit flow (`/edit`, `/edit/items`, `/edit/confirm`) and `convert_to_order`
 - **manage_medusa_admin_products**: Product CRUD, variants, categories, tags, and types management
 - **manage_medusa_admin_customers**: Customer CRUD, addresses, and customer groups management
 - **manage_medusa_admin_collections**: Collections CRUD and product associations
@@ -233,8 +235,22 @@ const response = await fetch('https://your-app.ondigitalocean.app/mcp', {
 - **manage_medusa_admin_gift_cards**: Gift card operations and balance management
 - **manage_medusa_admin_taxes**: Tax rates and tax regions management
 - **manage_medusa_admin_sales_channels**: Sales channels and product associations
-- **manage_medusa_admin_users**: User management, invites, and API key operations
+- **manage_medusa_admin_users**: User management, invites, and API key operations (users are created through invites; there is no `POST /admin/users`)
+- **manage_medusa_admin_v2**: Newer v2 resources (search, search indexes, store credit, translations, views, workflow executions…) plus a generic `request` action (GET/POST/PUT/PATCH/DELETE on `/admin/*`, GET on `/auth*`). `request` refuses the paths in `lib/extension-exclusions.js` and other secret-bearing routes
 - **report_mcp_feedback**: Lets agents report concrete problems with the MCP (missing action, unclear error, friction). Does not touch Medusa data; routes to the telemetry webhook and in-memory monitoring
+
+Removed actions (they never had a real route) return `{ error, removed: true }` with the alternative instead of calling the store.
+
+### Boilerplate extension tools (`manage_minimalart_*`)
+Custom admin routes of the Mercatto boilerplate (extensions + plugins), one tool per domain, all built on the declarative engine in `lib/extension-resources.js` (each resource is data: paths, CRUD verbs that exist, sub-actions, PUT upserts, DELETE with body, binary/CSV summaries). Actions: `list|get|create|update|delete|sub_action|describe` (`describe` shows routes and params without calling the store). `site_id` is sent as `x-site-id`. Sub-actions flagged `!` (emails/WhatsApp to customers, real shipments, charges, external publishing) are refused without `confirm: true`. A 404 carries a hint that the extension may not be installed in that store.
+- **manage_minimalart_extensions**: content & catalog extras (banners, blog, brands, landings, media, videos, dashboards…). Original resource names kept for backward compatibility
+- **manage_minimalart_commerce**, **manage_minimalart_logistics**, **manage_minimalart_integrations**, **manage_minimalart_whatsapp**, **manage_minimalart_growth**, **manage_minimalart_stores**, **manage_minimalart_ai_assistant**
+- **manage_store_memory**: the backoffice AI assistant memory (search, CRUD, feedback), documents, proposals and runs. Memories created through MCP default to `pending` (an admin approves them in the backoffice)
+
+Routes that must never be reachable (secrets, raw DB, debug…) live in `lib/extension-exclusions.js` and are enforced at runtime by both the engine and `manage_medusa_admin_v2 request`. After changing extension tools, run `node scripts/verify-extension-routes.js <path-to-boilerplate>`: it must report 0 mismatches and 0 gaps.
+
+### Prompts
+`lib/prompts.js`: `OPERATOR_PROMPTS` (store operators: sales summary, catalog health, key customers, pending orders, promotions, campaign planning, save to memory) and `DEVELOPER_PROMPTS` (upgrade, integrations). Prompts declare `arguments`; `prompts/get` interpolates `{{arg}}`. The handler accepts `prompts` (list or `(req) => list`); the boilerplate publishes only the operator set.
 
 ### Cross-cutting: `context` property
 Every tool exposes an optional `context` string in its input schema. Agents use it to explain *why* they are making a call. It is stripped before the args reach the tool function (never sent to Medusa) and forwarded to telemetry — doubling as an audit trail for mutating operations. Injected centrally in `transformToolsToMcp()` / `executeToolOptimized()` (`lib/tools.js`); telemetry routing lives in `lib/telemetry.js`.
@@ -242,7 +258,7 @@ Every tool exposes an optional `context` string in its input schema. Agents use 
 ### Server instructions and per-store identity
 `initialize` returns `instructions` (`DEFAULT_SERVER_INSTRUCTIONS` in `lib/instructions.js`): data-access rules clients inject into the model's system prompt. Keep them short — they ride along in every conversation.
 
-`createStreamableHTTPHandler()` accepts `serverInfo` and `instructions` either as values or as `(req) => value | Promise<value>`, resolved on every `initialize`. Embedders serving one store (the boilerplate backend) use this to publish that store's `title` and `icons` (MCP 2025-11-25). A throwing resolver falls back to the default, so branding lookups never break `initialize`. Embedders should check `HTTP_HANDLER_FEATURES` (`lib/constants.js`) before relying on either.
+`createStreamableHTTPHandler()` accepts `serverInfo`, `instructions` and `prompts` either as values or as `(req) => value | Promise<value>`, resolved on every request. Embedders serving one store (the boilerplate backend) use this to publish that store's `title` and `icons` (MCP 2025-11-25). A throwing resolver falls back to the default, so branding lookups never break `initialize`. Embedders should check `HTTP_HANDLER_FEATURES` (`lib/constants.js`) before relying on either.
 
 ## Security Notes
 

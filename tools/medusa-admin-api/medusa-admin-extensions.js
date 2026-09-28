@@ -1,156 +1,283 @@
 /**
- * Tool para las EXTENSIONES propias del backoffice (no-core de Medusa).
- * Cubre los endpoints custom de la tienda: métricas de commerce, marcas,
- * banners, blog, sucursales, landings, biblioteca de medios, corporativos,
- * grupos dinámicos, plantillas de email, links de venta, videos, contactos.
+ * Tool para las EXTENSIONES de contenido/marketing del backoffice (no-core de
+ * Medusa): métricas de commerce, marcas, banners, blog, sucursales, landings,
+ * biblioteca de medios, empresas/corporativos B2B, grupos dinámicos, plantillas
+ * de email, links de venta, videos, contactos.
  *
- * Sigue el mismo patrón que las demás tools (lee credenciales de env, usa
- * makeRequest/createHeaders/appendQueryParam). Las acciones list/get son de
- * lectura; create/update/delete mutan (la política del asistente las gatea).
+ * Declarativa: los recursos son data y los ejecuta `lib/extension-resources.js`.
+ * Compatibilidad: mismos nombres de recurso y acciones que la versión original
+ * (list/get/create/update/delete). Arreglos respecto de la original:
+ * - blog_settings update → POST /admin/blog-settings (singleton, no /:id).
+ * - contact_submissions no tiene GET /:id (sí update de estado y delete).
+ * - sales_channels_b2c no tiene GET /:id.
+ * - ids URL-encodeados, `site_id` → x-site-id, descargas resumidas.
  */
 
-import {
-  appendQueryParam,
-  createHeaders,
-  hasMedusaCredentials,
-  makeRequest,
-  missingCredentialsMessage,
-  normalizeBaseUrl,
-} from '../../lib/medusa-client.js';
+import { createExtensionTool } from '../../lib/extension-resources.js';
 
-// resource -> path del Admin API custom.
-const RESOURCE_PATHS = {
-  commerce_dashboard: '/admin/commerce-dashboard',
-  banners: '/admin/banners',
-  blog_categories: '/admin/blog-categories',
-  blog_posts: '/admin/blog-posts',
-  blog_settings: '/admin/blog-settings',
-  brands: '/admin/brands',
-  checkout_links: '/admin/checkout-links',
-  companies: '/admin/companies',
-  contact_submissions: '/admin/contact-submissions',
-  corporates: '/admin/corporates',
-  dynamic_groups: '/admin/dynamic-groups',
-  email_templates: '/admin/email-templates',
-  landing_pages: '/admin/landing-pages',
-  media_library: '/admin/media-library',
-  sales_channels_b2c: '/admin/sales-channels-b2c',
-  store_locations: '/admin/store-locations',
-  videos: '/admin/videos',
-};
+const PRODUCTS_BODY = 'body {product_ids: string[]}';
 
-// Recursos que solo exponen lectura (GET).
-const READ_ONLY = new Set(['commerce_dashboard', 'contact_submissions', 'sales_channels_b2c']);
-// Recursos "singleton": el GET no lleva :id (devuelven un objeto, no una lista).
-const SINGLETON = new Set(['commerce_dashboard', 'blog_settings']);
-
-function buildQuery(args) {
-  const params = new URLSearchParams();
-  appendQueryParam(params, 'limit', args.limit);
-  appendQueryParam(params, 'offset', args.offset);
-  appendQueryParam(params, 'q', args.q);
-  if (args.query && typeof args.query === 'object') {
-    Object.entries(args.query).forEach(([key, value]) => appendQueryParam(params, key, value));
-  }
-  const qs = params.toString();
-  return qs ? `?${qs}` : '';
-}
-
-async function handleExtensionsOperation(args = {}) {
-  const baseUrl = normalizeBaseUrl(process.env.MEDUSA_BASE_URL || 'http://localhost:9000');
-  const apiKey =
-    process.env.MEDUSA_API_KEY ||
-    process.env.MEDUSA_JWT ||
-    process.env.MEDUSA_SESSION_COOKIE ||
-    process.env.MEDUSA_COOKIE;
-  if (!apiKey || !hasMedusaCredentials()) {
-    return { error: missingCredentialsMessage() };
-  }
-  const headers = createHeaders(apiKey);
-
-  const { action, resource, id } = args;
-  const path = RESOURCE_PATHS[resource];
-  if (!path) {
-    return {
-      error: `Unknown resource: ${resource}. Allowed: ${Object.keys(RESOURCE_PATHS).join(', ')}`,
-    };
-  }
-
-  try {
-    const qs = buildQuery(args);
-    switch (action) {
-      case 'list':
-        return await makeRequest(`${baseUrl}${path}${qs}`, { method: 'GET', headers });
-      case 'get': {
-        const url =
-          id && !SINGLETON.has(resource)
-            ? `${baseUrl}${path}/${id}${qs}`
-            : `${baseUrl}${path}${qs}`;
-        return await makeRequest(url, { method: 'GET', headers });
-      }
-      case 'create':
-        if (READ_ONLY.has(resource)) return { error: `Resource ${resource} is read-only.` };
-        return await makeRequest(`${baseUrl}${path}`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(args.body ?? {}),
-        });
-      case 'update':
-        if (READ_ONLY.has(resource)) return { error: `Resource ${resource} is read-only.` };
-        if (!id) return { error: 'id is required for update.' };
-        return await makeRequest(`${baseUrl}${path}/${id}`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(args.body ?? {}),
-        });
-      case 'delete':
-        if (READ_ONLY.has(resource)) return { error: `Resource ${resource} is read-only.` };
-        if (!id) return { error: 'id is required for delete.' };
-        return await makeRequest(`${baseUrl}${path}/${id}`, { method: 'DELETE', headers });
-      default:
-        return { error: `Unknown action: ${action}` };
-    }
-  } catch (error) {
-    return { error: `An error occurred on ${resource}/${action}: ${error.message}` };
-  }
-}
-
-export const apiTool = {
-  definition: {
-    name: 'manage_minimalart_extensions',
-    description:
-      'Acceso a las EXTENSIONES propias del backoffice (no-core de Medusa). Útil para datos del negocio que no están en las tools admin estándar. Destacado: resource="commerce_dashboard" devuelve MÉTRICAS AGREGADAS de ventas/órdenes (usar action="list" con query {from,to en ISO 8601, bucket:"daily"|"hourly"}). Otros recursos: brands, banners, blog_posts/blog_categories/blog_settings, store_locations, landing_pages, media_library, companies, corporates, dynamic_groups, email_templates, checkout_links, videos, contact_submissions, sales_channels_b2c.',
-    parameters: {
-      type: 'object',
-      properties: {
-        action: {
-          type: 'string',
-          enum: ['list', 'get', 'create', 'update', 'delete'],
-          description:
-            'Acción: list/get (lectura), create/update/delete (mutan, pueden requerir confirmación).',
-        },
-        resource: {
-          type: 'string',
-          enum: Object.keys(RESOURCE_PATHS),
-          description:
-            'Recurso de extensión. commerce_dashboard = métricas de ventas (singleton, GET con query); contact_submissions y sales_channels_b2c son solo lectura.',
-        },
-        id: {
-          type: 'string',
-          description: 'ID del recurso (para get/update/delete; no aplica a singletons).',
-        },
-        limit: { type: 'number', description: 'Máximo de items a devolver en listados.' },
-        offset: { type: 'number', description: 'Items a saltear (paginación).' },
-        q: { type: 'string', description: 'Búsqueda de texto donde el recurso la soporte.' },
-        query: {
-          type: 'object',
-          description:
-            'Parámetros de query extra. Para commerce_dashboard: {"from":"2026-05-01T00:00:00Z","to":"2026-05-31T23:59:59Z","bucket":"daily","sales_channel_id":"...","country_code":"ar","currency_code":"ars"}.',
-        },
-        body: { type: 'object', description: 'Cuerpo JSON para create/update.' },
+export const RESOURCES = {
+  commerce_dashboard: {
+    path: '/admin/commerce-dashboard',
+    singleton: true,
+    readOnly: true,
+    ops: ['list', 'get'],
+    summary:
+      'MÉTRICAS AGREGADAS de ventas/órdenes (query {from,to ISO 8601, bucket:"daily"|"hourly", sales_channel_id, country_code, currency_code})',
+    notes: 'Sin from/to devuelve los últimos 30 días. Con site_id de una tienda inexistente responde 404.',
+  },
+  commerce_dashboards: {
+    path: '/admin/commerce-dashboard/dashboards',
+    summary: 'Tableros custom del dashboard de commerce (widgets)',
+    subActions: {
+      duplicate: { method: 'POST', path: '/{id}/duplicate' },
+      catalogue: { method: 'GET', path: '/admin/commerce-dashboard/catalogue', note: 'Datasets/métricas disponibles para widgets.' },
+      query: {
+        method: 'POST',
+        path: '/admin/commerce-dashboard/query',
+        mutating: false,
+        requires: ['body.dashboardId'],
+        note: 'Ejecuta un widget: body {dashboardId, widgetId, preview?, query?, context?}.',
       },
-      required: ['action', 'resource'],
+      options: {
+        method: 'POST',
+        path: '/admin/commerce-dashboard/options',
+        mutating: false,
+        requires: ['body.dashboardId', 'body.field'],
+        note: 'Valores posibles de un filtro: body {dashboardId, widgetId|preview+query, field, context}.',
+      },
+      set_default: {
+        method: 'POST',
+        path: '/admin/commerce-dashboard/preferences',
+        note: 'Tablero por defecto del usuario: body {dashboardId|null}.',
+      },
+      aggregate: {
+        method: 'POST',
+        path: '/admin/commerce-dashboard/aggregate',
+        note: 'Recalcula los snapshots agregados (202, asíncrono).',
+      },
     },
   },
-  function: handleExtensionsOperation,
+  banners: {
+    path: '/admin/banners',
+    summary: 'Banners del storefront',
+    subActions: {
+      publish: { method: 'POST', path: '/{id}/publish', note: 'Visible en la tienda.' },
+      unpublish: { method: 'POST', path: '/{id}/unpublish' },
+      archive: { method: 'POST', path: '/{id}/archive' },
+      ai_generate: {
+        method: 'POST',
+        path: '/ai-generate',
+        mutating: false,
+        requires: ['body.brief'],
+        note: 'Genera copy con IA (no guarda): body {brief, tone?, goal?, audience?, locale?, placement?}.',
+      },
+      ai_compose: { method: 'POST', path: '/ai-compose', mutating: false, note: 'Compone un banner con IA (no guarda).' },
+      ai_image: { method: 'POST', path: '/ai-image', note: 'Genera una imagen con IA.' },
+    },
+  },
+  blog_categories: { path: '/admin/blog-categories', summary: 'Categorías del blog' },
+  blog_posts: {
+    path: '/admin/blog-posts',
+    summary: 'Posts del blog',
+    subActions: {
+      duplicate: { method: 'POST', path: '/{id}/duplicate' },
+      publish: { method: 'POST', path: '/{id}/publish', note: 'Visible en la tienda.' },
+      unpublish: { method: 'POST', path: '/{id}/unpublish' },
+      list_products: { method: 'GET', path: '/{id}/products' },
+      set_products: { method: 'POST', path: '/{id}/products', note: 'Productos relacionados del post.' },
+    },
+  },
+  blog_settings: {
+    path: '/admin/blog-settings',
+    singleton: true,
+    // `create` se mantiene por compatibilidad: la tool original lo mandaba a la raíz.
+    ops: ['get', 'create', 'update'],
+    summary: 'Configuración del blog (singleton; create/update = POST a la raíz)',
+  },
+  brands: {
+    path: '/admin/brands',
+    summary: 'Marcas',
+    subActions: {
+      list_images: { method: 'GET', path: '/{id}/images' },
+      add_image: { method: 'POST', path: '/{id}/images' },
+      delete_image: { method: 'DELETE', path: '/{id}/images/{child_id}', note: 'child_id = image_id.' },
+      list_products: { method: 'GET', path: '/{id}/products' },
+      add_products: { method: 'POST', path: '/{id}/products', requires: ['body.product_ids'], note: PRODUCTS_BODY },
+      remove_products: {
+        method: 'DELETE',
+        path: '/{id}/products',
+        sendBody: true,
+        requires: ['body.product_ids'],
+        note: `DELETE con ${PRODUCTS_BODY}.`,
+      },
+      bulk: { method: 'POST', path: '/bulk', requires: ['body.items'], note: 'Asignación masiva marca↔productos: body {items:[...]}.' },
+      export: {
+        method: 'GET',
+        path: '/export',
+        note: 'CSV marca↔producto (se devuelve una vista previa).',
+        download: 'CSV completo: backoffice → Marcas → Exportar.',
+      },
+    },
+  },
+  checkout_links: { path: '/admin/checkout-links', summary: 'Links de venta / checkout directo' },
+  companies: {
+    path: '/admin/companies',
+    summary: 'Empresas B2B (cuentas corriente, crédito, miembros)',
+    subActions: {
+      get_commercial: { method: 'GET', path: '/{id}/commercial', note: 'Condiciones comerciales.' },
+      update_commercial: { method: 'POST', path: '/{id}/commercial' },
+      get_credit: { method: 'GET', path: '/{id}/credit' },
+      update_credit: { method: 'POST', path: '/{id}/credit', note: 'Límite/estado de crédito.' },
+      update_credit_conditions: { method: 'POST', path: '/{id}/credit/conditions' },
+      list_credit_transactions: {
+        method: 'GET',
+        path: '/{id}/credit/transactions',
+        note: 'query {type, from, to} + limit/offset.',
+      },
+      create_credit_transaction: {
+        method: 'POST',
+        path: '/{id}/credit/transactions',
+        impact: 'high',
+        note: 'Registra un movimiento de dinero en la cuenta corriente.',
+      },
+      set_customer_group: { method: 'POST', path: '/{id}/customer-group' },
+    },
+    children: {
+      members: { path: '/{id}/members', ops: ['list', 'create', 'update', 'delete'], notes: { update: 'child_id = memberId.' } },
+    },
+  },
+  contact_submissions: {
+    path: '/admin/contact-submissions',
+    ops: ['list', 'update', 'delete'],
+    summary: 'Formularios de contacto recibidos (update = body {status:"new"|"read"|"archived"}; no hay get por id)',
+  },
+  corporates: {
+    path: '/admin/corporates',
+    summary: 'Clientes corporativos (miembros, reglas, estado)',
+    subActions: {
+      activity: { method: 'GET', path: '/{id}/activity' },
+      set_customer_group: { method: 'POST', path: '/{id}/customer-group' },
+      set_status: { method: 'POST', path: '/{id}/status' },
+    },
+    children: {
+      members: { path: '/{id}/members', ops: ['list', 'create', 'update', 'delete'] },
+      rules: { path: '/{id}/rules', ops: ['list', 'create', 'update', 'delete'] },
+    },
+  },
+  dynamic_groups: {
+    path: '/admin/dynamic-groups',
+    summary: 'Grupos dinámicos de clientes (reglas → customer group)',
+    subActions: {
+      logs: { method: 'GET', path: '/{id}/logs' },
+      recalculate: { method: 'POST', path: '/{id}/recalculate' },
+      get_settings: { method: 'GET', path: '/settings' },
+      update_settings: { method: 'POST', path: '/settings' },
+    },
+  },
+  email_templates: {
+    path: '/admin/email-templates',
+    summary: 'Plantillas de email transaccional',
+    subActions: {
+      preview: { method: 'POST', path: '/{id}/preview', mutating: false, note: 'Render de prueba (no envía).' },
+      publish: { method: 'POST', path: '/{id}/publish', note: 'La plantilla pasa a usarse en los envíos reales.' },
+      unpublish: { method: 'POST', path: '/{id}/unpublish' },
+      test_send: { method: 'POST', path: '/{id}/test-send', impact: 'high', note: 'Envía un email REAL de prueba.' },
+      list_sends: { method: 'GET', path: '/{id}/sends', note: 'Historial de envíos (limit).' },
+    },
+  },
+  landing_pages: {
+    path: '/admin/landing-pages',
+    summary: 'Landing pages',
+    subActions: {
+      ai_generate: { method: 'POST', path: '/{id}/ai-generate', note: 'Genera contenido con IA.' },
+      ai_image: { method: 'POST', path: '/{id}/ai-image' },
+      ai_improve_copy: { method: 'POST', path: '/{id}/ai-improve-copy' },
+      ai_seo: { method: 'POST', path: '/{id}/ai-seo' },
+      ai_translate: { method: 'POST', path: '/{id}/ai-translate' },
+      duplicate: { method: 'POST', path: '/{id}/duplicate' },
+      publish: { method: 'POST', path: '/{id}/publish', note: 'Visible en la tienda.' },
+      unpublish: { method: 'POST', path: '/{id}/unpublish' },
+      get_preview: { method: 'GET', path: '/{id}/preview' },
+      preview: { method: 'POST', path: '/{id}/preview', mutating: false },
+    },
+  },
+  media_library: {
+    path: '/admin/media-library',
+    summary: 'Biblioteca de medios',
+    subActions: {
+      attach: { method: 'POST', path: '/attach', note: 'Asocia un medio a una entidad.' },
+      backfill: { method: 'POST', path: '/backfill', note: 'Indexa medios existentes.' },
+    },
+  },
+  sales_channels_b2c: {
+    path: '/admin/sales-channels-b2c',
+    readOnly: true,
+    ops: ['list'],
+    summary: 'Canales de venta B2C (solo list)',
+  },
+  store_locations: {
+    path: '/admin/store-locations',
+    summary: 'Sucursales (config de sucursal, cobertura, delivery)',
+    subActions: {
+      get_branch_config: { method: 'GET', path: '/{id}/branch-config' },
+      update_branch_config: { method: 'POST', path: '/{id}/branch-config' },
+      get_delivery: { method: 'GET', path: '/{id}/delivery' },
+      update_delivery: { method: 'POST', path: '/{id}/delivery' },
+    },
+    children: {
+      coverage: { path: '/{id}/coverage', singular: 'coverage', ops: ['list', 'create', 'update', 'delete'] },
+    },
+  },
+  videos: {
+    path: '/admin/videos',
+    summary: 'Videos (Vimeo) y sus productos',
+    subActions: {
+      list_products: { method: 'GET', path: '/{id}/products' },
+      add_products: { method: 'POST', path: '/{id}/products', requires: ['body.product_ids'], note: PRODUCTS_BODY },
+      remove_products: {
+        method: 'DELETE',
+        path: '/{id}/products',
+        sendBody: true,
+        requires: ['body.product_ids'],
+        note: `DELETE con ${PRODUCTS_BODY}.`,
+      },
+      sync: { method: 'POST', path: '/{id}/sync', note: 'Re-sincroniza metadata desde Vimeo.' },
+    },
+  },
+  vimeo: {
+    path: '/admin/vimeo',
+    ops: [],
+    summary: 'Cuenta Vimeo conectada',
+    subActions: {
+      status: { method: 'GET', path: '/status' },
+      list_videos: { method: 'GET', path: '/videos', note: 'query {query, page, per_page}.' },
+      upload: {
+        method: 'POST',
+        path: '/upload',
+        requires: ['body.title', 'body.file_size'],
+        note: 'Crea un upload en Vimeo: body {title, description?, file_size} → devuelve el link de subida.',
+      },
+    },
+  },
+};
+
+const tool = createExtensionTool({
+  name: 'manage_minimalart_extensions',
+  intro:
+    'EXTENSIONES de contenido y marketing del backoffice (no-core de Medusa). Para MÉTRICAS AGREGADAS de ventas usá resource="commerce_dashboard" action="list" con query {from,to ISO 8601, bucket}. Otros dominios: manage_minimalart_commerce (loyalty, suscripciones, B2B), _logistics, _integrations, _whatsapp, _growth, _stores, _ai_assistant y manage_store_memory.',
+  resources: RESOURCES,
+  legacyGetFallback: true,
+  propertyDescriptions: {
+    query:
+      'Parámetros de query extra. Para commerce_dashboard: {"from":"2026-05-01T00:00:00Z","to":"2026-05-31T23:59:59Z","bucket":"daily","sales_channel_id":"...","country_code":"ar","currency_code":"ars"}.',
+  },
+});
+
+export const extensionResources = tool.resources;
+
+export const apiTool = {
+  definition: tool.definition,
+  function: tool.function,
 };

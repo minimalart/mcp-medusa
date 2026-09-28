@@ -1,6 +1,6 @@
 {
   "name": "mcp-medusa",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "MCP server for MedusaJS e-commerce backend operations. Supports local STDIO and remote Streamable HTTP transport.",
   "main": "index.js",
   "bin": {
@@ -45,11 +45,12 @@
     "benchmark": "node benchmark/performance-test.js",
     "load-test": "node benchmark/load-test.js",
     "load-test:heavy": "node benchmark/load-test.js --concurrentUsers 20 --requestsPerUser 50 --delayMs 50",
-    "performance": "npm run benchmark && npm run load-test"
+    "performance": "npm run benchmark && npm run load-test",
+    "verify:extensions": "node scripts/verify-extension-routes.js"
   },
   "dependencies": {
-    "@medusajs/js-sdk": "2.17.2",
-    "@medusajs/types": "2.17.2",
+    "@medusajs/js-sdk": "2.21.1",
+    "@medusajs/types": "2.21.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "13.1.0",
     "cors": "^2.8.5",
