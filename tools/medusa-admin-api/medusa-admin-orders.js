@@ -31,7 +31,7 @@ const listOrders = async (args = {}) => {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
 
-  if (!baseUrl || !apiKey || !hasMedusaCredentials()) {
+  if (!baseUrl || !hasMedusaCredentials()) {
     return { error: missingCredentialsMessage() };
   }
   //console.log(`base url: ${baseUrl}`)
@@ -68,7 +68,7 @@ const getOrder = async (args) => {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
 
-  if (!baseUrl || !apiKey || !hasMedusaCredentials()) {
+  if (!baseUrl || !hasMedusaCredentials()) {
     return { error: missingCredentialsMessage() };
   }
 
@@ -104,7 +104,7 @@ const cancelOrder = async (args) => {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
 
-  if (!baseUrl || !apiKey || !hasMedusaCredentials()) {
+  if (!baseUrl || !hasMedusaCredentials()) {
     return { error: missingCredentialsMessage() };
   }
 
@@ -139,7 +139,7 @@ const completeOrder = async (args) => {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
 
-  if (!baseUrl || !apiKey || !hasMedusaCredentials()) {
+  if (!baseUrl || !hasMedusaCredentials()) {
     return { error: missingCredentialsMessage() };
   }
 
@@ -174,7 +174,7 @@ const archiveOrder = async (args) => {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
 
-  if (!baseUrl || !apiKey || !hasMedusaCredentials()) {
+  if (!baseUrl || !hasMedusaCredentials()) {
     return { error: missingCredentialsMessage() };
   }
 
@@ -210,7 +210,7 @@ const transferOrder = async (args) => {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
 
-  if (!baseUrl || !apiKey || !hasMedusaCredentials()) {
+  if (!baseUrl || !hasMedusaCredentials()) {
     return { error: missingCredentialsMessage() };
   }
 
@@ -255,7 +255,7 @@ const listOrderFulfillments = async (args) => {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
 
-  if (!baseUrl || !apiKey || !hasMedusaCredentials()) {
+  if (!baseUrl || !hasMedusaCredentials()) {
     return { error: missingCredentialsMessage() };
   }
 
@@ -291,7 +291,7 @@ const cancelFulfillment = async (args) => {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
 
-  if (!baseUrl || !apiKey || !hasMedusaCredentials()) {
+  if (!baseUrl || !hasMedusaCredentials()) {
     return { error: missingCredentialsMessage() };
   }
 
@@ -332,7 +332,7 @@ function getOrdersConfig() {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
 
-  if (!baseUrl || !apiKey || !hasMedusaCredentials()) {
+  if (!baseUrl || !hasMedusaCredentials()) {
     return { error: missingCredentialsMessage() };
   }
   return { baseUrl, apiKey };

@@ -10,7 +10,7 @@ async function handleSalesChannelsOperation(args) {
   const baseUrl = normalizeBaseUrl(rawBaseUrl);
   const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
   
-  if (!apiKey || !hasMedusaCredentials()) {
+  if (!hasMedusaCredentials()) {
     throw new Error(missingCredentialsMessage());
   }
 

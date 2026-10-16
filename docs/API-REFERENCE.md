@@ -2,6 +2,16 @@
 
 > **Fuente de verdad:** la definición de cada tool (`npm run list-tools`). Esta página resume; si difiere, gana la tool.
 
+## Cambios en 1.7.0
+
+**Credencial por usuario.** Quien embebe el handler HTTP puede correr cada `tools/call` con la credencial del usuario que llama (`runWithMedusaAuth`, `lib/request-auth.js`), en vez de la del entorno. Dentro de ese contexto:
+- La credencial no se puede reemplazar: los headers `Authorization`, `Cookie`, `Proxy-Authorization` y `x-medusa-access-token` que traiga una tool o el modelo se descartan.
+- `canWrite({ method, url, path })` se consulta antes de cada request que no es GET/HEAD; si devuelve un motivo, la escritura no sale (`WriteNotAllowedError`, 403). Sirve para consentimientos de solo lectura y para apagar escrituras por tool.
+
+Opciones nuevas de `createStreamableHTTPHandler` (feature `user-auth` en `HTTP_HANDLER_FEATURES`): `filterTools(req, mcpTools, tools)` decide qué tools ve el usuario en `tools/list`, y `authorizeToolCall(req, { name, args, tool })` devuelve `{ allowed: false, reason }` o `{ allowed: true, medusaAuth }`. Si un hook falla, el request falla. `executeToolOptimized(tools, name, args, { medusaAuth })` hace lo mismo in-process.
+
+`manage_medusa_admin_v2`: `headers` acepta solo `x-no-compression`.
+
 ## Cambios en 1.6.0
 
 Target Medusa **2.21.1**, compatible con **2.18.0**. Las acciones que necesitan una versión más nueva responden "Esta acción requiere Medusa >= X" si la tienda devuelve 404.

@@ -25,7 +25,7 @@ async function handleGiftCardsOperation(args) {
     return { error: REMOVED_ACTIONS[args.action], removed: true };
   }
 
-  if (!apiKey || !hasMedusaCredentials()) {
+  if (!hasMedusaCredentials()) {
     throw new Error(missingCredentialsMessage());
   }
 

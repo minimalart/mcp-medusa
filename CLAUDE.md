@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Medusa.js MCP (Model Context Protocol) server that provides automated API tools for Medusa e-commerce backend operations. It focuses on admin API functionality including order management, cart operations, and fulfillment processing.
 
-**Version:** 1.6.0
+**Version:** 1.7.0
 **Supports:** Local STDIO (npx) and Remote Streamable HTTP (Digital Ocean)
 
 ## Architecture
@@ -66,6 +66,8 @@ Each tool exports an `apiTool` object with:
 Medusa Admin Tools use Bearer token authentication:
 - `MEDUSA_BASE_URL`: Base URL for the Medusa backend
 - `MEDUSA_API_KEY`: Admin API key or JWT token
+
+Per-user credential (1.7.0): embedders run each call inside `runWithMedusaAuth({ headers, canWrite }, fn)` (`lib/request-auth.js`) so the Admin API enforces THAT user's permissions. Inside the context the env credential is never read, credential headers from tools or the model are dropped, and `canWrite` gates every non-GET request. The HTTP handler exposes it through `filterTools` / `authorizeToolCall` (feature `user-auth`). Tools must always build headers with `createHeaders()` / `makeRequest()` from `lib/medusa-client.js`, never from `process.env` or with their own `fetch`.
 
 ## Development Commands
 

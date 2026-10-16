@@ -110,4 +110,7 @@ export const extensionResources = tool.resources;
 export const apiTool = {
   definition: tool.definition,
   function: tool.function,
+  // Rutas declaradas por resource: quien embebe el handler deriva de acá qué
+  // permiso pide cada resource (filtro de tools por usuario).
+  resources: tool.resources,
 };
