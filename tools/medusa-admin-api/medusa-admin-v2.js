@@ -192,6 +192,15 @@ function assertPositiveAmount(amount) {
 
 const LOYALTY = "@medusajs/loyalty-plugin";
 
+const SAFE_REQUEST_HEADERS = new Set(["x-no-compression"]);
+
+function safeRequestHeaders(headers) {
+  if (!headers || typeof headers !== "object" || Array.isArray(headers)) return {};
+  return Object.fromEntries(
+    Object.entries(headers).filter(([key]) => SAFE_REQUEST_HEADERS.has(String(key).toLowerCase())),
+  );
+}
+
 async function executeFunction(args = {}) {
   const {
     action,
@@ -201,8 +210,11 @@ async function executeFunction(args = {}) {
     path,
     query = {},
     body,
-    headers = {},
+    headers: requestedHeaders,
   } = args;
+  // El modelo sólo puede pedir headers inocuos: la credencial (Authorization,
+  // Cookie…) la pone el cliente y no se puede reemplazar desde una tool.
+  const headers = safeRequestHeaders(requestedHeaders);
 
   switch (action) {
     case "list": {
@@ -391,7 +403,7 @@ const apiTool = {
         },
         headers: {
           type: "object",
-          description: "Additional request headers, such as x-no-compression.",
+          description: "Optional x-no-compression header. Credentials cannot be passed: every call runs as the connected user.",
         },
         q: {
           type: "string",

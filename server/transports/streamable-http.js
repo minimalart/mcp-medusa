@@ -16,6 +16,7 @@ import {
 } from '../../lib/constants.js';
 import { MCP_PROMPTS, describePrompt, getMcpPrompt, renderPrompt } from '../../lib/prompts.js';
 import { normalizeInstructions } from '../../lib/instructions.js';
+import { runWithMedusaAuth } from '../../lib/request-auth.js';
 
 const FALLBACK_SERVER_INFO = { name: 'mcp-medusa', version: '1.1.0' };
 
@@ -42,6 +43,14 @@ export class StreamableHTTPHandler {
     this.instructions = options.instructions;
     // Mismo contrato para los prompts: lista fija o `(req) => lista`.
     this.prompts = options.prompts || MCP_PROMPTS;
+    // Permisos por usuario (los usa quien embebe el handler):
+    // - `filterTools(req, mcpTools, tools)` → la lista que ve ESE usuario.
+    // - `authorizeToolCall(req, { name, args, tool })` → `{ allowed: false, reason }`
+    //   o `{ allowed: true, medusaAuth }`: la tool corre con esa credencial
+    //   (`runWithMedusaAuth`), no con la del entorno.
+    // Si un hook falla, el request falla: nunca se cae a "todo permitido".
+    this.filterTools = options.filterTools;
+    this.authorizeToolCall = options.authorizeToolCall;
     this.protocolVersion = options.protocolVersion || MCP_VERSION_HTTP;
     this.supportedProtocolVersions =
       options.supportedProtocolVersions || MCP_SUPPORTED_PROTOCOL_VERSIONS;
@@ -275,10 +284,10 @@ export class StreamableHTTPHandler {
         return { acknowledged: true };
 
       case 'tools/list':
-        return this.handleToolsList(params);
+        return this.handleToolsList(params, req);
 
       case 'tools/call':
-        return this.handleToolsCall(params);
+        return this.handleToolsCall(params, req);
 
       case 'prompts/list':
         return this.handlePromptsList(req);
@@ -347,19 +356,21 @@ export class StreamableHTTPHandler {
   /**
    * Handle tools/list method
    */
-  async handleToolsList(params) {
+  async handleToolsList(params, req) {
     const tools = await this.discoverTools();
     const mcpTools = this.transformToolsToMcp(tools);
+    if (typeof this.filterTools !== 'function') {
+      return { tools: mcpTools };
+    }
 
-    return {
-      tools: mcpTools
-    };
+    const visible = await this.filterTools(req, mcpTools, tools);
+    return { tools: Array.isArray(visible) ? visible : [] };
   }
 
   /**
    * Handle tools/call method
    */
-  async handleToolsCall(params) {
+  async handleToolsCall(params, req) {
     const { name, arguments: args } = params;
 
     if (!name) {
@@ -369,9 +380,22 @@ export class StreamableHTTPHandler {
     }
 
     const tools = await this.discoverTools();
-    const result = await this.executeToolOptimized(tools, name, args || {});
+    if (typeof this.authorizeToolCall !== 'function') {
+      return this.executeToolOptimized(tools, name, args || {});
+    }
 
-    return result;
+    const tool = tools.find((t) => t.definition?.name === name);
+    const decision = await this.authorizeToolCall(req, { name, args: args || {}, tool });
+    if (!decision?.allowed) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: decision?.reason || `Tool not available for this user: ${name}` }],
+      };
+    }
+
+    return runWithMedusaAuth(decision.medusaAuth, () =>
+      this.executeToolOptimized(tools, name, args || {}),
+    );
   }
 
   async resolvePrompts(req) {
