@@ -218,3 +218,12 @@ test("a failing hook fails the request instead of allowing everything", async ()
   const body = await rpc(handler, "tools/list", {}, { user: { tools: [] } });
   assert.match(body.error.message, /permissions unavailable/);
 });
+
+test("extension tools publish their routes so embedders can derive permissions", async () => {
+  const { discoverTools } = await import("../../lib/tools.js");
+  const tools = await discoverTools(true);
+  const commerce = tools.find((t) => t.definition.name === "manage_minimalart_commerce");
+  const programs = commerce.resources.loyalty_programs;
+  assert.equal(programs.ops.list.method, "GET");
+  assert.equal(programs.ops.list.path, "/admin/loyalty/programs");
+});
