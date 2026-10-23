@@ -6,13 +6,15 @@
  * ítems, promociones y métodos de envío se cambian a través de una "edición"
  * (order change) que se abre, se modifica y se confirma:
  *
+ *   POST   /admin/draft-orders                                   crear (create)
  *   POST   /admin/draft-orders/{id}/edit                         abrir edición
  *   POST   /admin/draft-orders/{id}/edit/items                   agregar ítems
  *   POST   /admin/draft-orders/{id}/edit/items/item/{item_id}    cambiar ítem existente (quantity 0 = quitar)
- *   DELETE /admin/draft-orders/{id}/edit/items/{action_id}       quitar un ítem agregado en esta edición
+ *   POST|DELETE /admin/draft-orders/{id}/edit/items/{action_id}  cambiar/quitar un ítem agregado en esta edición
  *   POST|DELETE /admin/draft-orders/{id}/edit/promotions         agregar/quitar promo_codes
  *   POST   /admin/draft-orders/{id}/edit/shipping-methods        agregar método de envío
- *   DELETE /admin/draft-orders/{id}/edit/shipping-methods/method/{method_id}  quitar método de envío existente
+ *   POST|DELETE /admin/draft-orders/{id}/edit/shipping-methods/method/{method_id}  cambiar/quitar método de envío existente
+ *   POST|DELETE /admin/draft-orders/{id}/edit/shipping-methods/{action_id}  cambiar/quitar método agregado en esta edición
  *   POST   /admin/draft-orders/{id}/edit/request                 marcar la edición como solicitada
  *   POST   /admin/draft-orders/{id}/edit/confirm                 aplicar la edición
  *   DELETE /admin/draft-orders/{id}/edit                         descartar la edición
@@ -310,6 +312,18 @@ const EDIT_STEPS = {
       return { suffix: `/edit/items/${encodeURIComponent(args.action_id)}`, method: 'DELETE' };
     }
   },
+  edit_update_added_item: {
+    label: 'updating an item added in the current draft order edit',
+    build: (args) => {
+      if (!args.action_id) return { error: 'action_id is required (the ITEM_ADD action id returned in the edit preview).' };
+      if (args.quantity === undefined) return { error: 'quantity is required.' };
+      return {
+        suffix: `/edit/items/${encodeURIComponent(args.action_id)}`,
+        method: 'POST',
+        body: pickDefined(args, ['quantity', 'unit_price', 'compare_at_unit_price', 'internal_note'])
+      };
+    }
+  },
   edit_add_promotions: {
     label: 'adding promotions to the draft order edit',
     build: (args) => {
@@ -340,6 +354,36 @@ const EDIT_STEPS = {
     build: (args) => {
       if (!args.method_id) return { error: 'method_id (existing shipping method id) is required.' };
       return { suffix: `/edit/shipping-methods/method/${encodeURIComponent(args.method_id)}`, method: 'DELETE' };
+    }
+  },
+  edit_update_shipping_method: {
+    label: 'updating an existing shipping method in the draft order edit',
+    build: (args) => {
+      if (!args.method_id) return { error: 'method_id (existing shipping method id) is required.' };
+      return {
+        suffix: `/edit/shipping-methods/method/${encodeURIComponent(args.method_id)}`,
+        method: 'POST',
+        body: pickDefined(args, ['shipping_option_id', 'custom_amount', 'internal_note'])
+      };
+    }
+  },
+  edit_update_added_shipping_method: {
+    label: 'updating a shipping method added in the current draft order edit',
+    build: (args) => {
+      if (!args.action_id) return { error: 'action_id is required (the SHIPPING_ADD action id returned in the edit preview).' };
+      if (!args.shipping_option_id) return { error: 'shipping_option_id is required.' };
+      return {
+        suffix: `/edit/shipping-methods/${encodeURIComponent(args.action_id)}`,
+        method: 'POST',
+        body: pickDefined(args, ['shipping_option_id', 'custom_amount', 'description', 'internal_note', 'metadata'])
+      };
+    }
+  },
+  edit_remove_added_shipping_method: {
+    label: 'removing a shipping method added in the current draft order edit',
+    build: (args) => {
+      if (!args.action_id) return { error: 'action_id is required (the SHIPPING_ADD action id returned in the edit preview).' };
+      return { suffix: `/edit/shipping-methods/${encodeURIComponent(args.action_id)}`, method: 'DELETE' };
     }
   },
   request_edit: {
@@ -603,7 +647,7 @@ const apiTool = {
     name: 'manage_medusa_admin_draft_orders',
     description:
       'Medusa Admin draft orders (Medusa 2.17.2+, incl. 2.18 and 2.21.1). Basic: create (region_id + email or customer_id; optional items, promo_codes, addresses, shipping_methods), list, get, update (email/customer/addresses/metadata), delete, convert_to_order (POST /convert-to-order: turns the draft into a real order; order notifications/subscribers may fire). ' +
-      'Items, promotions and shipping methods change through an EDIT: begin_edit → edit_add_items / edit_update_item / edit_remove_item / edit_remove_added_item / edit_add_promotions / edit_remove_promotions / edit_add_shipping_method / edit_remove_shipping_method → confirm_edit (applies) or cancel_edit (discards); request_edit marks it as requested. ' +
+      'Items, promotions and shipping methods change through an EDIT: begin_edit → edit_add_items / edit_update_item / edit_remove_item / edit_update_added_item / edit_remove_added_item / edit_add_promotions / edit_remove_promotions / edit_add_shipping_method / edit_update_shipping_method / edit_remove_shipping_method (existing method_id) / edit_update_added_shipping_method / edit_remove_added_shipping_method (action_id of a method added in this edit) → confirm_edit (applies) or cancel_edit (discards); request_edit marks it as requested. ' +
       'Shortcuts add_line_item, update_line_item and remove_line_item run a full edit in one call (open → change → confirm; the edit is canceled if the change fails) and fail if another edit is already open.',
     parameters: {
         type: 'object',
@@ -739,15 +783,15 @@ const apiTool = {
           },
           action_id: {
             type: 'string',
-            description: 'Order change action ID of an item added in the current edit (edit_remove_added_item).'
+            description: 'Order change action ID of an item or shipping method added in the current edit (edit_update_added_item, edit_remove_added_item, edit_update_added_shipping_method, edit_remove_added_shipping_method).'
           },
           shipping_option_id: {
             type: 'string',
-            description: 'Shipping option ID (edit_add_shipping_method).'
+            description: 'Shipping option ID (edit_add_shipping_method, edit_update_*shipping_method).'
           },
           custom_amount: {
             type: 'number',
-            description: 'Custom shipping amount (edit_add_shipping_method).'
+            description: 'Custom shipping amount (edit_add_shipping_method, edit_update_*shipping_method).'
           },
           description: {
             type: 'string',
@@ -755,7 +799,7 @@ const apiTool = {
           },
           method_id: {
             type: 'string',
-            description: 'Existing shipping method ID (edit_remove_shipping_method).'
+            description: 'Existing shipping method ID (edit_update_shipping_method, edit_remove_shipping_method).'
           }
         },
         required: ['action']

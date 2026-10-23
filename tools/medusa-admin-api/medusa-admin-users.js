@@ -68,6 +68,8 @@ async function handleUsersOperation(args) {
       return await deleteApiKey(baseUrl, headers, args);
     case 'revoke_api_key':
       return await revokeApiKey(baseUrl, headers, args);
+    case 'update_api_key_sales_channels':
+      return await updateApiKeySalesChannels(baseUrl, headers, args);
     default:
       throw new Error(`Unknown action: ${args.action}`);
   }
@@ -249,6 +251,24 @@ async function revokeApiKey(baseUrl, headers, args) {
   });
 }
 
+/**
+ * Sales channels a publishable API key gives access to (storefront scope).
+ * POST /admin/api-keys/{id}/sales-channels { add, remove } (desde 2.17.2, incluida 2.18.0)
+ */
+async function updateApiKeySalesChannels(baseUrl, headers, args) {
+  if (!args.api_key_id) throw new Error('API key ID is required');
+  const body = {};
+  if (Array.isArray(args.add)) body.add = args.add;
+  if (Array.isArray(args.remove)) body.remove = args.remove;
+  if (!body.add && !body.remove) throw new Error('add and/or remove (arrays of sales channel IDs) are required');
+  const url = `${baseUrl}/admin/api-keys/${encodeURIComponent(args.api_key_id)}/sales-channels`;
+  return await makeRequest(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_users',
@@ -256,7 +276,8 @@ export const apiTool = {
       'Medusa Admin users, invites and API keys (Medusa 2.17.2+, incl. 2.18 and 2.21.1). Users: list_users, get_user, get_current_user (the authenticated admin), update_user (first_name, last_name, avatar_url, metadata), delete_user, ' +
       'list_auth_providers (auth providers linked to a user, e.g. emailpass/google; Medusa >= 2.20). ' +
       'New admins are added with create_invite (email, optional roles): Medusa emits invite.created (the store usually emails the invite link) and the person accepts it and sets their own password; resend_invite re-sends it. create_user was removed (no such route in Medusa v2). ' +
-      'API keys: list/get/create (title + type secret|publishable; the secret token is only returned once)/update/delete/revoke.',
+      'API keys: list/get/create (title + type secret|publishable; the secret token is only returned once)/update/delete/revoke. ' +
+      'update_api_key_sales_channels (api_key_id of a publishable key + add/remove sales channel IDs) changes which sales channels the storefront using that key can see.',
     parameters: {
       type: 'object',
       properties: {
@@ -265,10 +286,13 @@ export const apiTool = {
           enum: [
             'list_users', 'get_user', 'get_current_user', 'list_auth_providers', 'update_user', 'delete_user',
             'list_invites', 'get_invite', 'create_invite', 'delete_invite', 'resend_invite',
-            'list_api_keys', 'get_api_key', 'create_api_key', 'update_api_key', 'delete_api_key', 'revoke_api_key'
+            'list_api_keys', 'get_api_key', 'create_api_key', 'update_api_key', 'delete_api_key', 'revoke_api_key',
+            'update_api_key_sales_channels'
           ],
           description: 'The action to perform.'
         },
+        add: { type: 'array', items: { type: 'string' }, description: 'update_api_key_sales_channels: sales channel IDs to add.' },
+        remove: { type: 'array', items: { type: 'string' }, description: 'update_api_key_sales_channels: sales channel IDs to remove.' },
         id: { type: 'string', description: 'User ID.' },
         invite_id: { type: 'string', description: 'Invite ID.' },
         api_key_id: { type: 'string', description: 'API key ID.' },
