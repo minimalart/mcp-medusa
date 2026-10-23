@@ -432,7 +432,7 @@ After configuring Claude Desktop:
 | `manage_medusa_admin_sales_channels` | Sales channel management | `list`, `get`, `create`, `add_products` |
 | `manage_medusa_admin_users` | User & auth management | `list_users`, `list_invites`, `list_api_keys` |
 | `manage_medusa_admin_v2` | Newer v2 resources (search, search indexes, store credit…) + generic request | `list`, `get`, `search`, `request` |
-| `manage_minimalart_extensions` | Boilerplate content extras (banners, blog, brands, landings, media, videos, dashboards) | `list`, `get`, `create`, `update`, `delete`, `sub_action`, `describe` |
+| `manage_minimalart_extensions` | Boilerplate content & catalog extras (product attributes / spec sheet, banners, blog, brands, landings, media, videos, dashboards) | `list`, `get`, `create`, `update`, `delete`, `sub_action`, `describe` |
 | `manage_minimalart_commerce` | Loyalty, gift-card experience, recurring orders, abandoned carts, bundles, B2B | same engine |
 | `manage_minimalart_logistics` | Andreani, Correo Argentino, own delivery, pickup | same engine |
 | `manage_minimalart_integrations` | ERP, Typesense, GA4, Clarity, Merchant, newsletter, MercadoLibre | same engine |

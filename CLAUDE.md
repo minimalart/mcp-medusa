@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Medusa.js MCP (Model Context Protocol) server that provides automated API tools for Medusa e-commerce backend operations. It focuses on admin API functionality including order management, cart operations, and fulfillment processing.
 
-**Version:** 1.7.0
+**Version:** 1.8.0
 **Supports:** Local STDIO (npx) and Remote Streamable HTTP (Digital Ocean)
 
 ## Architecture
@@ -245,7 +245,7 @@ Removed actions (they never had a real route) return `{ error, removed: true }` 
 
 ### Boilerplate extension tools (`manage_minimalart_*`)
 Custom admin routes of the Mercatto boilerplate (extensions + plugins), one tool per domain, all built on the declarative engine in `lib/extension-resources.js` (each resource is data: paths, CRUD verbs that exist, sub-actions, PUT upserts, DELETE with body, binary/CSV summaries). Actions: `list|get|create|update|delete|sub_action|describe` (`describe` shows routes and params without calling the store). `site_id` is sent as `x-site-id`. Sub-actions flagged `!` (emails/WhatsApp to customers, real shipments, charges, external publishing) are refused without `confirm: true`. A 404 carries a hint that the extension may not be installed in that store.
-- **manage_minimalart_extensions**: content & catalog extras (banners, blog, brands, landings, media, videos, dashboards…). Original resource names kept for backward compatibility
+- **manage_minimalart_extensions**: content & catalog extras (product attributes / spec sheet, banners, blog, brands, landings, media, videos, dashboards…). Original resource names kept for backward compatibility
 - **manage_minimalart_commerce**, **manage_minimalart_logistics**, **manage_minimalart_integrations**, **manage_minimalart_whatsapp**, **manage_minimalart_growth**, **manage_minimalart_stores**, **manage_minimalart_ai_assistant**
 - **manage_store_memory**: the backoffice AI assistant memory (search, CRUD, feedback), documents, proposals and runs. Memories created through MCP default to `pending` (an admin approves them in the backoffice)
 

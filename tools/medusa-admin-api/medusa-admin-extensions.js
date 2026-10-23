@@ -1,6 +1,7 @@
 /**
- * Tool para las EXTENSIONES de contenido/marketing del backoffice (no-core de
- * Medusa): métricas de commerce, marcas, banners, blog, sucursales, landings,
+ * Tool para las EXTENSIONES de contenido/catálogo/marketing del backoffice (no-core
+ * de Medusa): métricas de commerce, atributos de producto (ficha técnica), marcas,
+ * banners, blog, sucursales, landings,
  * biblioteca de medios, empresas/corporativos B2B, grupos dinámicos, plantillas
  * de email, links de venta, videos, contactos.
  *
@@ -56,6 +57,111 @@ export const RESOURCES = {
         method: 'POST',
         path: '/admin/commerce-dashboard/aggregate',
         note: 'Recalcula los snapshots agregados (202, asíncrono).',
+      },
+    },
+  },
+  // ─── Atributos de producto (plugin product-attributes): ficha técnica ────────
+  attributes: {
+    path: '/admin/attributes',
+    summary: 'Atributos de producto (ficha técnica): diccionario y uso por tienda',
+    notes:
+      'El diccionario es compartido por todas las tiendas; el USO (habilitado, ficha, filtro, búsqueda) es por tienda: mandá site_id. list devuelve el uso en la tienda activa. create body {label_es, type: text|long_text|number|boolean|select|multi_select, code?, unit?, visibility?: public|internal, options?: [{label_es, code?, aliases?}], usage?}. update no cambia código; tipo/unidad se bloquean si hay valores. delete = archivar (los valores se conservan).',
+    subActions: {
+      update_usage: {
+        method: 'POST',
+        path: '/{id}/usage',
+        note: 'Uso en la tienda activa (site_id obligatorio): body {enabled?, show_in_spec?, filterable?, searchable?, sortable?, label_es?, label_en?, group_code?, rank?}. Prender filtro o búsqueda dispara un sync completo de Typesense: el filtro aparece en la tienda cuando termina.',
+      },
+      create_option: {
+        method: 'POST',
+        path: '/{id}/options',
+        requires: ['body.label_es'],
+        note: 'Opción de una selección: body {label_es, code?, label_en?, aliases?: string[]}. El código queda fijo.',
+      },
+      update_option: {
+        method: 'POST',
+        path: '/{id}/options/{child_id}',
+        note: 'child_id = option_id. body {label_es?, label_en?, aliases?, rank?, status?: active|archived}. Archivar no borra valores existentes.',
+      },
+    },
+  },
+  attribute_sets: {
+    path: '/admin/attribute-sets',
+    summary: 'Conjuntos de atributos (p. ej. Bicicletas) y su estado por tienda',
+    notes:
+      'El conjunto es del diccionario (compartido); `store_usage` dice si está habilitado en la tienda activa (o en cuáles, sin site_id). create/update body {name_es, name_en?, disclaimer_es?, spec_order?: alphabetical|manual, items?: [{code|definition_id, group_code?, required_for_completeness?}]} (el orden del array es el orden manual). delete = archivar.',
+    subActions: {
+      enable_in_store: {
+        method: 'POST',
+        path: '/{id}/enable',
+        note: 'Habilita en la tienda activa (site_id obligatorio) todos los atributos del conjunto y los muestra en la ficha. Filtro y búsqueda se prenden aparte (attributes update_usage).',
+      },
+    },
+  },
+  attribute_presets: {
+    path: '/admin/attribute-presets',
+    ops: ['list'],
+    summary: 'Presets de conjuntos (Bicicletas, Herramientas)',
+    notes: '`in_dictionary` = ya existe su conjunto; `store_usage` = cuánto está habilitado en la tienda activa.',
+    subActions: {
+      install: {
+        method: 'POST',
+        path: '/{id}/install',
+        note: 'id = código del preset (bicicletas, herramientas). Crea lo que falta en el diccionario (reutiliza atributos con el mismo código) y lo habilita sólo en la tienda activa (site_id obligatorio).',
+      },
+    },
+  },
+  product_attributes: {
+    path: '/admin/products',
+    ops: ['get', 'update'],
+    opConfig: { get: { path: '/{id}/attributes' }, update: { path: '/{id}/attributes' } },
+    summary: 'Ficha técnica de un producto: valores del producto (heredados) y propios por variante',
+    notes:
+      'id = product_id. get devuelve revision, set, attributes (habilitados en la tienda activa), product.values (heredados por todas las variantes) y variants[] con values (propios) y effective (lo que muestra). update body {expected_revision (de get), set_id?: string|null, product?: {set: [{code, value, unit?}], unset: [code]}, variants?: [{variant_id, set, unset}]}: cargá en `product` lo que es igual para todas y en `variants` sólo lo que cambia; `unset` en una variante la vuelve a heredar. Todo o nada; 409 si otro cambio se guardó (volvé a leer). Selecciones por código, etiqueta o alias.',
+  },
+  attribute_imports: {
+    path: '/admin/attribute-imports',
+    ops: ['list', 'get', 'create'],
+    summary: 'Carga masiva de atributos (CSV/XLSX): subir, validar, confirmar',
+    notes:
+      'create body {kind: values|definitions, file_name, content_base64, delimiter?}. Valores: una fila con sólo product_id carga el producto (lo heredan las variantes); sku o variant_id, valores propios de una variante; columnas attr.<código>, unit.<código>, attribute_set, clear_attributes (array JSON). Celda vacía = no se toca. Flujo: create → sub_action preview → items → confirm.',
+    subActions: {
+      preview: {
+        method: 'POST',
+        path: '/{id}/preview',
+        mutating: false,
+        note: 'Valida y arma el diff SIN escribir productos: body {mapping? (el sugerido por create), mode?: fill_empty|replace, decimal?: dot|comma, sheet?}.',
+      },
+      items: { method: 'GET', path: '/{id}/items', note: 'Diff por producto: query {status: ready|unchanged|invalid|applied|failed|conflict}.' },
+      confirm: {
+        method: 'POST',
+        path: '/{id}/confirm',
+        impact: 'high',
+        note: 'Aplica el lote en segundo plano (escritura masiva): body {apply?: all|valid_only, confirm_clears?: boolean, enable_in_store?: boolean}.',
+      },
+      cancel: { method: 'POST', path: '/{id}/cancel', note: 'Cancela lo no iniciado; lo guardado queda.' },
+      retry: { method: 'POST', path: '/{id}/retry', note: 'Reintenta los productos fallidos o en conflicto (los revalida).' },
+      errors: {
+        method: 'GET',
+        path: '/{id}/errors',
+        note: 'CSV de errores por fila/columna (vista previa).',
+        download: 'CSV completo: backoffice → Atributos → Carga masiva.',
+      },
+    },
+  },
+  attribute_exports: {
+    path: '/admin/attribute-exports',
+    readOnly: true,
+    ops: ['list'],
+    summary: 'Exportación de atributos a CSV y plantillas',
+    notes:
+      'list query {kind: values|definitions|sets, set_code?, products?: with_values|all}. Valores: una fila del producto y una por variante con sus valores propios; se reimporta sin cambios. Se devuelve una vista previa del CSV.',
+    subActions: {
+      template: {
+        method: 'GET',
+        path: '/template',
+        note: 'Plantilla en blanco: query {kind: values|definitions|sets, set_code?}.',
+        download: 'Plantilla completa: backoffice → Atributos → Carga masiva → Plantillas y exportación.',
       },
     },
   },
@@ -266,7 +372,7 @@ export const RESOURCES = {
 const tool = createExtensionTool({
   name: 'manage_minimalart_extensions',
   intro:
-    'EXTENSIONES de contenido y marketing del backoffice (no-core de Medusa). Para MÉTRICAS AGREGADAS de ventas usá resource="commerce_dashboard" action="list" con query {from,to ISO 8601, bucket}. Otros dominios: manage_minimalart_commerce (loyalty, suscripciones, B2B), _logistics, _integrations, _whatsapp, _growth, _stores, _ai_assistant y manage_store_memory.',
+    'EXTENSIONES de contenido, catálogo y marketing del backoffice (no-core de Medusa). Ficha técnica: product_attributes y attribute*. Para MÉTRICAS AGREGADAS de ventas usá resource="commerce_dashboard" action="list" con query {from,to ISO 8601, bucket}. Otros dominios: manage_minimalart_commerce (loyalty, suscripciones, B2B), _logistics, _integrations, _whatsapp, _growth, _stores, _ai_assistant y manage_store_memory.',
   resources: RESOURCES,
   legacyGetFallback: true,
   propertyDescriptions: {
