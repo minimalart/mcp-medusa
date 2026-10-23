@@ -42,10 +42,12 @@ test("every extension tool is registered, loads and exposes a valid JSON schema"
   assert.deepEqual(names, [
     "manage_minimalart_ai_assistant",
     "manage_minimalart_commerce",
+    "manage_minimalart_content",
     "manage_minimalart_extensions",
     "manage_minimalart_growth",
     "manage_minimalart_integrations",
     "manage_minimalart_logistics",
+    "manage_minimalart_payments",
     "manage_minimalart_stores",
     "manage_minimalart_whatsapp",
     "manage_store_memory",

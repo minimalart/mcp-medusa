@@ -17,6 +17,8 @@ export const toolPaths = [
   'medusa-admin-api/medusa-admin-v2.js',
   'medusa-admin-api/medusa-admin-extensions.js',
   'medusa-admin-api/mcp-feedback.js',
+  'medusa-admin-api/medusa-admin-ext-content.js',
+  'medusa-admin-api/medusa-admin-ext-payments.js',
   'medusa-admin-api/medusa-admin-ext-commerce.js',
   'medusa-admin-api/medusa-admin-ext-logistics.js',
   'medusa-admin-api/medusa-admin-ext-integrations.js',

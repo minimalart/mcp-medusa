@@ -7,6 +7,7 @@ import {
   TOOL_ACTIONS,
 } from "../../lib/extension-resources.js";
 import { apiTool as legacyTool } from "../../tools/medusa-admin-api/medusa-admin-extensions.js";
+import { apiTool as contentTool } from "../../tools/medusa-admin-api/medusa-admin-ext-content.js";
 import { apiTool as integrationsTool } from "../../tools/medusa-admin-api/medusa-admin-ext-integrations.js";
 import { apiTool as commerceTool } from "../../tools/medusa-admin-api/medusa-admin-ext-commerce.js";
 import { apiTool as logisticsTool } from "../../tools/medusa-admin-api/medusa-admin-ext-logistics.js";
@@ -63,7 +64,7 @@ test("ids and child ids are URL-encoded in the path", async () => {
 });
 
 test("singleton update posts to the resource root", async () => {
-  await legacyTool.function({ action: "update", resource: "blog_settings", id: "ignored", body: { title: "Blog" } });
+  await contentTool.function({ action: "update", resource: "blog_settings", id: "ignored", body: { title: "Blog" } });
   assert.equal(lastUrl().pathname, "/admin/blog-settings");
   assert.equal(lastCall().options.method, "POST");
   assert.deepEqual(lastBody(), { title: "Blog" });
@@ -123,13 +124,13 @@ test("DELETE with body sends the JSON body only when declared", async () => {
   assert.equal(lastUrl().pathname, "/admin/erp/tinting/colors");
   assert.deepEqual(lastBody(), { codes: ["A1"] });
 
-  await legacyTool.function({ action: "delete", resource: "banners", id: "ban_1", body: { ignored: true } });
+  await contentTool.function({ action: "delete", resource: "banners", id: "ban_1", body: { ignored: true } });
   assert.equal(lastCall().options.method, "DELETE");
   assert.equal(lastCall().options.body, undefined);
 });
 
 test("sub-action paths are built from templates, relative and absolute", async () => {
-  await legacyTool.function({ action: "sub_action", resource: "banners", sub_action: "publish", id: "ban_1" });
+  await contentTool.function({ action: "sub_action", resource: "banners", sub_action: "publish", id: "ban_1" });
   assert.equal(lastUrl().pathname, "/admin/banners/ban_1/publish");
 
   await legacyTool.function({ action: "sub_action", resource: "commerce_dashboards", sub_action: "catalogue" });
@@ -137,7 +138,7 @@ test("sub-action paths are built from templates, relative and absolute", async (
   assert.equal(lastCall().options.method, "GET");
 
   // Acepta el nombre del sub_action directo en `action`.
-  await legacyTool.function({ action: "unpublish", resource: "banners", id: "ban_1" });
+  await contentTool.function({ action: "unpublish", resource: "banners", id: "ban_1" });
   assert.equal(lastUrl().pathname, "/admin/banners/ban_1/unpublish");
 
   // Placeholder en query (pdf_catalogs/file?id=).
@@ -260,14 +261,14 @@ test("read-only resources reject writes without calling the store", async () => 
 });
 
 test("unknown sub-action, action or resource returns an actionable error", async () => {
-  const unknownSub = await legacyTool.function({ action: "sub_action", resource: "banners", sub_action: "explode", id: "1" });
+  const unknownSub = await contentTool.function({ action: "sub_action", resource: "banners", sub_action: "explode", id: "1" });
   assert.match(unknownSub.error, /Unknown sub_action 'explode'/);
   assert.match(unknownSub.error, /publish, unpublish, archive/);
 
-  const missingSub = await legacyTool.function({ action: "sub_action", resource: "banners" });
+  const missingSub = await contentTool.function({ action: "sub_action", resource: "banners" });
   assert.match(missingSub.error, /sub_action is required/);
 
-  const unknownAction = await legacyTool.function({ action: "frobnicate", resource: "banners" });
+  const unknownAction = await contentTool.function({ action: "frobnicate", resource: "banners" });
   assert.match(unknownAction.error, /Unknown action: frobnicate/);
 
   const unknownResource = await legacyTool.function({ action: "list", resource: "nope" });
@@ -275,21 +276,21 @@ test("unknown sub-action, action or resource returns an actionable error", async
 
   // Claves del prototipo no se confunden con recursos/acciones declarados.
   assert.match((await legacyTool.function({ action: "list", resource: "constructor" })).error, /Unknown resource/);
-  assert.match((await legacyTool.function({ action: "toString", resource: "banners" })).error, /Unknown action/);
+  assert.match((await contentTool.function({ action: "toString", resource: "banners" })).error, /Unknown action/);
   assert.match(
-    (await legacyTool.function({ action: "sub_action", sub_action: "__proto__", resource: "banners" })).error,
+    (await contentTool.function({ action: "sub_action", sub_action: "__proto__", resource: "banners" })).error,
     /Unknown sub_action/,
   );
   assert.equal(fetchCalls.length, 0);
 });
 
 test("high-impact actions require confirm: true", async () => {
-  const blocked = await legacyTool.function({ action: "sub_action", resource: "email_templates", sub_action: "test_send", id: "tpl_1" });
+  const blocked = await contentTool.function({ action: "sub_action", resource: "email_templates", sub_action: "test_send", id: "tpl_1" });
   assert.equal(blocked.requires_confirmation, true);
   assert.match(blocked.error, /confirm: true/);
   assert.equal(fetchCalls.length, 0);
 
-  await legacyTool.function({
+  await contentTool.function({
     action: "sub_action",
     resource: "email_templates",
     sub_action: "test_send",

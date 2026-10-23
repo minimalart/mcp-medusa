@@ -1,6 +1,7 @@
 /**
- * INTEGRACIONES del boilerplate: ERP, Typesense (búsqueda), GA4, Clarity, Google
- * Merchant, newsletter y MercadoLibre (plugin marketplaces).
+ * INTEGRACIONES del boilerplate: ERP, Typesense (búsqueda y orden de productos por
+ * tienda), GA4, Clarity, Google Merchant, catálogo de Meta, newsletter y
+ * MercadoLibre (plugin marketplaces).
  *
  * Declarativa: ver `lib/extension-resources.js`.
  */
@@ -22,6 +23,14 @@ export const RESOURCES = {
   erp_config: {
     path: '/admin/erp/config',
     singleton: true,
+    ops: ['get', 'update', 'delete'],
+    opConfig: {
+      delete: {
+        method: 'DELETE',
+        impact: 'high',
+        note: 'Vuelve a usar el ERP global: borra el ERP PROPIO de la tienda (site_id obligatorio; la global no se borra por acá).',
+      },
+    },
     summary: 'Configuración del ERP (proveedor, mapeos)',
     subActions: {
       lookups: { method: 'GET', path: '/lookups', note: 'Listas auxiliares (depósitos, listas de precio...).' },
@@ -50,6 +59,22 @@ export const RESOURCES = {
       unregistered_orders: { method: 'GET', path: '/unregistered-orders', note: 'Órdenes no registradas en el ERP.' },
       get_order: { method: 'GET', path: '/orders/{id}', note: 'Estado ERP de una orden (id = order_id).' },
       order_stock_by_location: { method: 'GET', path: '/orders/{id}/stock-by-location' },
+      sale_preview: {
+        method: 'GET',
+        path: '/orders/{id}/sale-preview',
+        note: 'Dry run del comprobante de venta que recibiría el ERP para la orden, armado ahora (no envía ni crea nada).',
+      },
+      drift: {
+        method: 'GET',
+        path: '/drift',
+        note: 'Productos compartidos entre tiendas con ERPs distintos: stock, título y precio por ERP, dueño del catálogo y conflictos. enabled:false con un solo ERP.',
+      },
+      set_drift_owner: {
+        method: 'POST',
+        path: '/drift/owner',
+        requires: ['body.product_id'],
+        note: 'Qué ERP escribe título/precio/descripción de un producto compartido: body {product_id, erp_config_id|null} (null = regla por default). Sólo un ERP que atiende al producto.',
+      },
       set_order_billing_deposito: {
         method: 'POST',
         path: '/orders/{id}/billing-deposito',
@@ -129,13 +154,43 @@ export const RESOURCES = {
   typesense_curations: typesenseRule('/admin/typesense/curations', 'Curaciones/pins de resultados (PUT upsert)'),
   typesense_stopwords: typesenseRule('/admin/typesense/stopwords', 'Stopwords (PUT upsert)'),
   typesense_presets: typesenseRule('/admin/typesense/presets', 'Presets de búsqueda (PUT upsert)'),
+  typesense_store_order: {
+    path: '/admin/typesense/store-order',
+    singleton: true,
+    opConfig: {
+      update: {
+        method: 'PUT',
+        impact: 'high',
+        requires: ['body.revision'],
+        note: 'Guarda y PUBLICA en segundo plano (202): body {revision, config, enabled?}. revision = la de get (control de concurrencia); el estado de la publicación se ve con get (published_revision).',
+      },
+    },
+    summary: 'Orden de los productos en la tienda (reglas por tienda: guardado ≠ publicado)',
+    subActions: {
+      options: { method: 'GET', path: '/options', note: 'Etiquetas, marcas y categorías elegibles en las condiciones.' },
+      products: { method: 'GET', path: '/products', note: 'Buscador de productos de la tienda: q + limit (≤400)/offset.' },
+      preview: {
+        method: 'POST',
+        path: '/preview',
+        mutating: false,
+        note: 'Calcula el orden de una config en edición sin publicar: body {config, action?, offset?, limit?}; action = ajuste manual (mover/soltar) y devuelve la config resultante.',
+      },
+    },
+  },
 
   // ─── Analítica / marketing ──────────────────────────────────────────────────
   ga4_config: {
     path: '/admin/ga4-config',
     singleton: true,
     summary: 'Google Analytics 4 (measurement id, estado)',
-    subActions: { test: { method: 'POST', path: '/test', mutating: false, note: 'Envía un evento de prueba a GA4.' } },
+    subActions: {
+      test: {
+        method: 'POST',
+        path: '/test-connection',
+        mutating: false,
+        note: 'Prueba measurement id + api secret contra el endpoint de debug de GA4 (no registra un hit real); devuelve los validation_messages.',
+      },
+    },
   },
   ga4_mappings: {
     path: '/admin/ga4-mappings',
@@ -158,6 +213,12 @@ export const RESOURCES = {
     singleton: true,
     readOnly: true,
     summary: 'Google Merchant Center (estado del feed)',
+  },
+  meta_catalog: {
+    path: '/admin/marketing-privacy/meta',
+    singleton: true,
+    readOnly: true,
+    summary: 'Catálogo de Meta (diagnóstico del feed; 409 si no está prendido)',
   },
   newsletter_subscriptions: {
     path: '/admin/newsletter-subscriptions',
@@ -281,11 +342,12 @@ const GROUPS = [
       'typesense_curations',
       'typesense_stopwords',
       'typesense_presets',
+      'typesense_store_order',
     ],
   },
   {
     title: 'Analítica y marketing',
-    resources: ['ga4_config', 'ga4_mappings', 'ga4_builtins', 'clarity', 'google_merchant', 'newsletter_subscriptions'],
+    resources: ['ga4_config', 'ga4_mappings', 'ga4_builtins', 'clarity', 'google_merchant', 'meta_catalog', 'newsletter_subscriptions'],
   },
   {
     title: 'MercadoLibre',
@@ -296,7 +358,7 @@ const GROUPS = [
 const tool = createExtensionTool({
   name: 'manage_minimalart_integrations',
   intro:
-    'INTEGRACIONES del backoffice: ERP, buscador Typesense, GA4, Clarity, Google Merchant, newsletter y MercadoLibre. WhatsApp: manage_minimalart_whatsapp.',
+    'INTEGRACIONES del backoffice: ERP, buscador Typesense (incl. orden de productos por tienda), GA4, Clarity, Google Merchant, catálogo de Meta, newsletter y MercadoLibre. WhatsApp: manage_minimalart_whatsapp.',
   resources: RESOURCES,
   groups: GROUPS,
 });

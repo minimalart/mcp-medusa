@@ -245,9 +245,13 @@ Removed actions (they never had a real route) return `{ error, removed: true }` 
 
 ### Boilerplate extension tools (`manage_minimalart_*`)
 Custom admin routes of the Mercatto boilerplate (extensions + plugins), one tool per domain, all built on the declarative engine in `lib/extension-resources.js` (each resource is data: paths, CRUD verbs that exist, sub-actions, PUT upserts, DELETE with body, binary/CSV summaries). Actions: `list|get|create|update|delete|sub_action|describe` (`describe` shows routes and params without calling the store). `site_id` is sent as `x-site-id`. Sub-actions flagged `!` (emails/WhatsApp to customers, real shipments, charges, external publishing) are refused without `confirm: true`. A 404 carries a hint that the extension may not be installed in that store.
-- **manage_minimalart_extensions**: content & catalog extras (product attributes / spec sheet, banners, blog, brands, landings, media, videos, dashboards…). Original resource names kept for backward compatibility
-- **manage_minimalart_commerce**, **manage_minimalart_logistics**, **manage_minimalart_integrations**, **manage_minimalart_whatsapp**, **manage_minimalart_growth**, **manage_minimalart_stores**, **manage_minimalart_ai_assistant**
+- **manage_minimalart_extensions**: catalog & customer extras (product attributes / spec sheet, brands, store locations, companies/corporates, dynamic groups, dashboards…)
+- **manage_minimalart_content**: banners, blog, landings, per-store pages (`site_pages`) and header/footer (`site_chrome`), media library, videos/Vimeo, email templates
+- **manage_minimalart_payments**: payment benefits, per-store payment accounts (`mercadopago_account`, `mobbex_account`, `modo_account`: masked, never tokens) and checkout links
+- **manage_minimalart_commerce**, **manage_minimalart_logistics**, **manage_minimalart_integrations**, **manage_minimalart_whatsapp** (also the web chat bot builder: `chatbot_*`), **manage_minimalart_growth**, **manage_minimalart_stores**, **manage_minimalart_ai_assistant**
 - **manage_store_memory**: the backoffice AI assistant memory (search, CRUD, feedback), documents, proposals and runs. Memories created through MCP default to `pending` (an admin approves them in the backoffice)
+
+1.9.0 moved resources between tools keeping their names, actions and paths: content from `extensions` to `content`, `checkout_links` from `extensions` and `payment_benefits` from `commerce` to `payments` (`test/unit/extensions-legacy-compat.test.js` pins where each original resource lives). Embedders that store tool names (agent allow-lists, per-tool policies) must map the old tool to the new one for those resources. Each resource's RBAC permission is derived by the embedder from its declared paths, so a moved resource keeps the same permission.
 
 Routes that must never be reachable (secrets, raw DB, debug…) live in `lib/extension-exclusions.js` and are enforced at runtime by both the engine and `manage_medusa_admin_v2 request`. After changing extension tools, run `node scripts/verify-extension-routes.js <path-to-boilerplate>`: it must report 0 mismatches and 0 gaps.
 

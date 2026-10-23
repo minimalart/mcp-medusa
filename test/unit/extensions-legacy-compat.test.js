@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { apiTool, extensionResources } from "../../tools/medusa-admin-api/medusa-admin-extensions.js";
+import * as contentTool from "../../tools/medusa-admin-api/medusa-admin-ext-content.js";
+import * as paymentsTool from "../../tools/medusa-admin-api/medusa-admin-ext-payments.js";
 
 // Backward compatibility of `manage_minimalart_extensions`: every resource and
-// action the original tool offered keeps its name, method and path.
+// action the original tool offered keeps its name, method and path. 1.9.0 moved
+// content to `manage_minimalart_content` and checkout links to
+// `manage_minimalart_payments`: same resource names, actions and paths there.
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -53,9 +57,30 @@ const ORIGINAL_SINGLETON = new Set(["commerce_dashboard", "blog_settings"]);
 // Recursos que la tool original declaraba mal (rutas inexistentes) y se corrigieron.
 const FIXED = new Set(["blog_settings", "contact_submissions", "sales_channels_b2c"]);
 
+// Dónde vive cada recurso original desde 1.9.0.
+const MOVED_TO = {
+  manage_minimalart_content: [
+    "banners",
+    "blog_categories",
+    "blog_posts",
+    "blog_settings",
+    "email_templates",
+    "landing_pages",
+    "media_library",
+    "videos",
+  ],
+  manage_minimalart_payments: ["checkout_links"],
+};
+const TOOLS = [
+  { apiTool, resources: extensionResources },
+  { apiTool: contentTool.apiTool, resources: contentTool.extensionResources },
+  { apiTool: paymentsTool.apiTool, resources: paymentsTool.extensionResources },
+];
+const homeOf = (resource) => TOOLS.find((t) => Object.hasOwn(t.resources, resource));
+
 async function call(args) {
   fetchCalls = [];
-  const result = await apiTool.function(args);
+  const result = await homeOf(args.resource).apiTool.function(args);
   return { result, calls: fetchCalls };
 }
 
@@ -65,22 +90,28 @@ function onlyCall(calls) {
   return { method: calls[0].options.method, path: url.pathname, url, body: calls[0].options.body };
 }
 
-test("the tool keeps its name, required params and every original resource", () => {
-  const { definition } = apiTool;
-  assert.equal(definition.name, "manage_minimalart_extensions");
-  assert.deepEqual(definition.parameters.required, ["action", "resource"]);
-  const resourceEnum = definition.parameters.properties.resource.enum;
+test("the tool keeps its name, required params and every original resource (here or where it moved)", () => {
+  assert.equal(apiTool.definition.name, "manage_minimalart_extensions");
+  const movedTo = Object.fromEntries(Object.entries(MOVED_TO).flatMap(([tool, names]) => names.map((n) => [n, tool])));
   for (const name of Object.keys(ORIGINAL_RESOURCES)) {
-    assert.ok(resourceEnum.includes(name), `missing resource ${name}`);
-    assert.equal(extensionResources[name].path, ORIGINAL_RESOURCES[name]);
+    const homes = TOOLS.filter((t) => Object.hasOwn(t.resources, name));
+    assert.equal(homes.length, 1, `${name} must live in exactly one tool`);
+    const [{ apiTool: tool, resources }] = homes;
+    assert.equal(tool.definition.name, movedTo[name] ?? "manage_minimalart_extensions", `${name}: unexpected tool`);
+    assert.ok(tool.definition.parameters.properties.resource.enum.includes(name), `missing resource ${name}`);
+    assert.equal(resources[name].path, ORIGINAL_RESOURCES[name]);
   }
-  for (const action of ["list", "get", "create", "update", "delete"]) {
-    assert.ok(definition.parameters.properties.action.enum.includes(action));
+  for (const { apiTool: tool } of TOOLS) {
+    const { definition } = tool;
+    assert.deepEqual(definition.parameters.required, ["action", "resource"]);
+    for (const action of ["list", "get", "create", "update", "delete"]) {
+      assert.ok(definition.parameters.properties.action.enum.includes(action));
+    }
+    for (const prop of ["id", "limit", "offset", "q", "query", "body"]) {
+      assert.ok(definition.parameters.properties[prop], `missing property ${prop}`);
+    }
   }
-  for (const prop of ["id", "limit", "offset", "q", "query", "body"]) {
-    assert.ok(definition.parameters.properties[prop], `missing property ${prop}`);
-  }
-  assert.match(definition.description, /commerce_dashboard/);
+  assert.match(apiTool.definition.description, /commerce_dashboard/);
 });
 
 for (const [resource, path] of Object.entries(ORIGINAL_RESOURCES)) {

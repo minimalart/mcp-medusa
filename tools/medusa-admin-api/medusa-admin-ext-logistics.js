@@ -1,5 +1,5 @@
 /**
- * Extensiones de LOGÍSTICA del boilerplate: Andreani, Correo Argentino, delivery
+ * Extensiones de LOGÍSTICA del boilerplate: Andreani, Correo Argentino, envia, delivery
  * propio (choferes, vehículos, zonas, reglas, rutas, ejecuciones), tipos de
  * sucursal, retiro en sucursal y datos de checkout de una orden.
  *
@@ -173,12 +173,43 @@ export const RESOURCES = {
     forbiddenQuery: ['documents'],
     summary: 'Datos del checkout de una orden (personas/unidades enmascaradas; id = order_id)',
   },
+
+  // ─── envia (cotizador multi-carrier) ─────────────────────────────────────────
+  envia: {
+    path: '/admin/envia',
+    ops: [],
+    summary: 'envia: carriers de la cuenta, carrier por depósito y cotización de prueba',
+    subActions: {
+      carriers: {
+        method: 'GET',
+        path: '/carriers',
+        note: 'Carriers y servicios habilitados en la cuenta de envia de la tienda: query {country: AR}. 400 sin credenciales.',
+      },
+      get_default_carrier: {
+        method: 'GET',
+        path: '/locations/{id}/default-carrier',
+        note: 'id = stock_location_id.',
+      },
+      set_default_carrier: {
+        method: 'POST',
+        path: '/locations/{id}/default-carrier',
+        note: 'id = stock_location_id. body {carrier|null, service?}: exige el proveedor envia habilitado en el depósito; null limpia.',
+      },
+      quote_test: {
+        method: 'POST',
+        path: '/quote-test',
+        mutating: false,
+        requires: ['body.location_id', 'body.postal_code'],
+        note: 'La MISMA cotización del checkout con un paquete sintético (sólo cotiza en envia): body {location_id, postal_code, province?, city?, country_code?, weight_kg, length_cm, width_cm, height_cm, declared_value}.',
+      },
+    },
+  },
 };
 
 const GROUPS = [
   {
     title: 'Carriers',
-    resources: ['andreani', 'andreani_fulfillments', 'andreani_boxes', 'correo_argentino', 'correo_argentino_fulfillments'],
+    resources: ['andreani', 'andreani_fulfillments', 'andreani_boxes', 'correo_argentino', 'correo_argentino_fulfillments', 'envia'],
   },
   {
     title: 'Delivery propio',
@@ -198,7 +229,7 @@ const GROUPS = [
 const tool = createExtensionTool({
   name: 'manage_minimalart_logistics',
   intro:
-    'Extensiones de LOGÍSTICA del backoffice: Andreani, Correo Argentino, delivery propio, tipos de sucursal, retiro en sucursal y checkout de una orden. Sucursales (cobertura, config): manage_minimalart_extensions resource=store_locations.',
+    'Extensiones de LOGÍSTICA del backoffice: Andreani, Correo Argentino, envia, delivery propio, tipos de sucursal, retiro en sucursal y checkout de una orden. Sucursales (cobertura, config): manage_minimalart_extensions resource=store_locations.',
   resources: RESOURCES,
   groups: GROUPS,
 });

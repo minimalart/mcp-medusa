@@ -1,8 +1,9 @@
 /**
  * Extensiones de COMERCIO del boilerplate: loyalty, gift cards (experiencia),
- * suscripciones (recurring orders), carritos abandonados, beneficios de pago,
- * bundles, entornos de precios, presupuestos B2B, compras mínimas, documentos
- * fiscales y perfiles de facturación.
+ * suscripciones (recurring orders), carritos abandonados, bundles, entornos de
+ * precios, presupuestos B2B, compras mínimas, documentos fiscales, perfiles de
+ * facturación y comercio con agentes. Los beneficios de pago pasaron a
+ * `manage_minimalart_payments` (1.9.0).
  *
  * Declarativa: ver `lib/extension-resources.js`.
  */
@@ -141,19 +142,6 @@ export const RESOURCES = {
       resend: { method: 'POST', path: '/{id}/resend', impact: 'high', note: 'Envía un email de recordatorio REAL al cliente.' },
     },
   },
-  payment_benefits: {
-    path: '/admin/payment-benefits',
-    summary: 'Beneficios de pago: cuotas/descuentos por banco o medio (query provider, status, type, source)',
-    subActions: {
-      catalog: { method: 'GET', path: '/catalog' },
-      dashboard: { method: 'GET', path: '/dashboard' },
-      sync: {
-        method: 'POST',
-        path: '/sync/{id}',
-        note: 'id = código del proveedor. Sincroniza el catálogo global: ejecutar sin site_id o desde la tienda principal.',
-      },
-    },
-  },
   bundles: {
     path: '/admin/bundles',
     summary: 'Bundles/combos (query q, status, store_id)',
@@ -257,6 +245,25 @@ export const RESOURCES = {
       update_config: { method: 'POST', path: '/config' },
     },
   },
+
+  // ─── Comercio con agentes (extensión agent-commerce) ───────────────────────
+  agent_commerce: {
+    path: '/admin/agent-commerce',
+    singleton: true,
+    readOnly: true,
+    opConfig: { get: { method: 'GET', path: '/summary' } },
+    summary: 'Comercio con agentes IA: resumen (capacidades activas, bloqueos, actividad declarada)',
+    notes:
+      'Sólo lectura. Con "Todas las tiendas" (sin site_id) una fila por tienda. La configuración (WEBMCP_ENABLED) se guarda con manage_minimalart_stores resource=app_settings, namespace extension:agent-commerce.',
+    subActions: {
+      channels: { method: 'GET', path: '/channels', note: 'Canales de discovery de la tienda: instalado, habilitado y configurado.' },
+      events: {
+        method: 'GET',
+        path: '/events',
+        note: 'Actividad declarada, lo más nuevo primero: limit/offset + query de filtros (herramienta, resultado, código). Un filtro fuera de vocabulario es 400.',
+      },
+    },
+  },
 };
 
 const GROUPS = [
@@ -288,10 +295,9 @@ const GROUPS = [
     ],
   },
   {
-    title: 'Carritos, pagos y precios',
+    title: 'Carritos y precios',
     resources: [
       'abandoned_carts',
-      'payment_benefits',
       'bundles',
       'pricing_environments',
       'price_list_sales_channel_rules',
@@ -299,12 +305,13 @@ const GROUPS = [
     ],
   },
   { title: 'B2B', resources: ['b2b_draft_orders', 'customer_billing_profiles', 'fiscal_documents'] },
+  { title: 'Comercio con agentes', resources: ['agent_commerce'] },
 ];
 
 const tool = createExtensionTool({
   name: 'manage_minimalart_commerce',
   intro:
-    'Extensiones de COMERCIO del backoffice: loyalty, gift cards, suscripciones, carritos abandonados, beneficios de pago, bundles, precios, compras mínimas y B2B (presupuestos, constancias fiscales). Empresas/corporativos y sus miembros/crédito: manage_minimalart_extensions.',
+    'Extensiones de COMERCIO del backoffice: loyalty, gift cards, suscripciones, carritos abandonados, bundles, precios, compras mínimas, B2B (presupuestos, constancias fiscales) y comercio con agentes IA. Empresas/corporativos y sus miembros/crédito: manage_minimalart_extensions. Beneficios de pago: manage_minimalart_payments.',
   resources: RESOURCES,
   groups: GROUPS,
 });

@@ -36,6 +36,26 @@ export const RESOURCES = {
       import_job: { method: 'GET', path: '/{id}/import-job', note: 'Estado del provisioning/importación.' },
       create_promotions: { method: 'POST', path: '/{id}/promotions' },
       retry: { method: 'POST', path: '/{id}/retry', note: 'Reintenta el provisioning.' },
+      verify_custom_domain: {
+        method: 'POST',
+        path: '/{id}/custom-domain/verify',
+        impact: 'high',
+        note: 'body opcional {domain}: con domain lo guarda (pending) y verifica; sin body verifica el guardado. Si verifica, pasa a active y es la URL pública de la tienda (canonical, links, retornos de pago). Si falla, el mensaje empieza con el código ([dns_not_found], [tls_error], [not_associated]…).',
+      },
+      link_checkout_provider: {
+        method: 'POST',
+        path: '/{id}/checkout/link-provider',
+        impact: 'high',
+        requires: ['body.provider_id'],
+        note: 'Habilita un medio de pago instalado en la región de la tienda: body {provider_id} (ej. pp_modo_modo). Idempotente (linked:false si ya estaba); 404 no instalado, 422 deshabilitado o sólo-ARS en región sin pesos.',
+      },
+      get_directory_preview: { method: 'GET', path: '/directory/preview', note: 'Contexto del preview del directorio (sitio virtual y países).' },
+      directory_preview: {
+        method: 'POST',
+        path: '/directory/preview',
+        mutating: false,
+        note: 'Preview del directorio de tiendas con un documento sin guardar: body {site_id:"directory", country_code, parent_origin, language?, mode?, section?, puck_data}. Devuelve un token corto (no publica).',
+      },
     },
   },
   site_templates: {
@@ -77,21 +97,6 @@ export const RESOURCES = {
     singleton: true,
     readOnly: true,
     summary: 'URL pública del storefront',
-  },
-  store_commerce: {
-    path: '/admin/store-config/commerce',
-    ops: [],
-    summary: 'País/moneda/idioma: contexto, plan y aplicación',
-    subActions: {
-      context: { method: 'GET', path: '/context' },
-      plan: {
-        method: 'POST',
-        path: '/plan',
-        mutating: false,
-        note: 'Calcula operaciones sin aplicar: body {country_code, currency_code, locale}.',
-      },
-      apply: { method: 'POST', path: '/apply', impact: 'high', note: 'Crea región / agrega moneda (usar el plan antes).' },
-    },
   },
   app_settings: {
     path: '/admin/app-settings',
@@ -150,7 +155,6 @@ const GROUPS = [
       'store_legal_pages',
       'store_site_gate',
       'storefront_url',
-      'store_commerce',
       'app_settings',
     ],
   },
