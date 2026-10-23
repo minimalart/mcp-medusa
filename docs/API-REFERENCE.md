@@ -2,6 +2,16 @@
 
 > **Fuente de verdad:** la definición de cada tool (`npm run list-tools`). Esta página resume; si difiere, gana la tool.
 
+## Cambios en 1.8.0
+
+**Ficha técnica (plugin product-attributes del boilerplate)** en `manage_minimalart_extensions`:
+- `attributes`: diccionario (CRUD; delete archiva) + `update_usage` (uso en la tienda activa, `site_id`), `create_option`, `update_option`.
+- `attribute_sets`: conjuntos (CRUD) con `store_usage` por tienda + `enable_in_store`.
+- `attribute_presets`: `list` + `install` (id = código del preset).
+- `product_attributes`: `get`/`update` de `/admin/products/{id}/attributes`. Los valores van en `product` (los heredan las variantes) o en `variants` (propios); `expected_revision` obligatorio, 409 si cambió.
+- `attribute_imports`: carga masiva (`create`, `preview` sin escritura, `items`, `confirm!` de alto impacto, `cancel`, `retry`, `errors`).
+- `attribute_exports`: exportación CSV (solo lectura) + `template`.
+
 ## Cambios en 1.7.0
 
 **Credencial por usuario.** Quien embebe el handler HTTP puede correr cada `tools/call` con la credencial del usuario que llama (`runWithMedusaAuth`, `lib/request-auth.js`), en vez de la del entorno. Dentro de ese contexto:
