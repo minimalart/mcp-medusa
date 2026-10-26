@@ -96,12 +96,13 @@ export const RESOURCES = {
     summary: 'Asesor de ventas por WhatsApp (config)',
     subActions: { audit: { method: 'GET', path: '/admin/whatsapp-advisor/audit', note: 'Auditoría de respuestas.' } },
   },
+
 };
 
 const tool = createExtensionTool({
   name: 'manage_minimalart_whatsapp',
   intro:
-    'WHATSAPP del backoffice (Kapso): templates de Meta, bindings de notificaciones, bot (canales, encendido, botón flotante), recorridos del bot, conversaciones, sesiones, analítica y asesor.',
+    'WHATSAPP del backoffice (Kapso): templates de Meta, bindings de notificaciones, bot (canales, encendido, botón flotante), recorridos del bot, conversaciones, sesiones, analítica y asesor. Chat web del storefront: manage_minimalart_chatbot.',
   resources: RESOURCES,
 });
 

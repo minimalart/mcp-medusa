@@ -89,6 +89,11 @@ export const RESOURCES = {
         note: 'Escribe los campos SEO en los productos/páginas.',
       },
       simulator: { method: 'POST', path: '/simulator', mutating: false, note: 'Simula cómo respondería una IA.' },
+      search_products: {
+        method: 'GET',
+        path: '/products',
+        note: 'Buscador de productos de Correcciones: sólo los de la tienda activa. query {q?, ids? (coma)} + limit.',
+      },
     },
   },
 

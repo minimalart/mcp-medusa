@@ -6,6 +6,15 @@
  *   - unit_of_measure y cantidades fraccionarias: Medusa >= 2.20 (en 2.18 el
  *     validador estricto rechaza unit_of_measure, por eso sólo se envía si viene).
  *   - POST /admin/inventory-items/export: Medusa >= 2.19.
+ *
+ * Rutas agregadas en 1.9 (presentes desde 2.17.2, incluida 2.18.0, hasta 2.21.2):
+ *   GET|POST /admin/inventory-items/{id}/location-levels              listar / crear nivel en una location
+ *   POST|DELETE /admin/inventory-items/{id}/location-levels/{location_id}
+ *   POST   /admin/inventory-items/{id}/location-levels/batch          { create, update, delete, force? }
+ *   POST   /admin/inventory-items/location-levels/batch               idem, para varios inventory items
+ *   GET|POST|DELETE /admin/reservations/{id}
+ *   POST   /admin/stock-locations/{id}/sales-channels                 { add, remove }
+ *   POST   /admin/stock-locations/{id}/fulfillment-providers          { add, remove }
  */
 
 import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
@@ -68,6 +77,18 @@ async function handleInventoryOperation(args) {
       return await listInventoryLevels(baseUrl, headers, args);
     case 'update_level':
       return await updateInventoryLevel(baseUrl, headers, args);
+    case 'create_level':
+      return await createInventoryLevel(baseUrl, headers, args);
+    case 'delete_level':
+      return await deleteInventoryLevel(baseUrl, headers, args);
+    case 'batch_item_levels':
+    case 'batch_levels':
+      return await batchInventoryLevels(baseUrl, headers, args);
+    case 'get_reservation':
+      return await getReservation(baseUrl, headers, args);
+    case 'update_location_sales_channels':
+    case 'update_location_fulfillment_providers':
+      return await updateLocationLinks(baseUrl, headers, args);
     case 'list_reservations':
       return await listReservations(baseUrl, headers, args);
     case 'create_reservation':
@@ -312,6 +333,82 @@ async function deleteReservation(baseUrl, headers, args) {
   return await makeRequest(url, { method: 'DELETE', headers });
 }
 
+async function createInventoryLevel(baseUrl, headers, args) {
+  if (!args.inventory_item_id) throw new Error('Inventory item ID is required');
+  if (!args.location_id) throw new Error('Location ID is required');
+
+  const levelData = { location_id: args.location_id };
+  if (args.stocked_quantity !== undefined) levelData.stocked_quantity = args.stocked_quantity;
+  if (args.incoming_quantity !== undefined) levelData.incoming_quantity = args.incoming_quantity;
+
+  const url = `${baseUrl}/admin/inventory-items/${encodeURIComponent(args.inventory_item_id)}/location-levels`;
+  return await makeRequest(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(levelData)
+  });
+}
+
+async function deleteInventoryLevel(baseUrl, headers, args) {
+  if (!args.inventory_item_id) throw new Error('Inventory item ID is required');
+  if (!args.location_id) throw new Error('Location ID is required');
+  const url = `${baseUrl}/admin/inventory-items/${encodeURIComponent(args.inventory_item_id)}/location-levels/${encodeURIComponent(args.location_id)}`;
+  return await makeRequest(url, { method: 'DELETE', headers });
+}
+
+/**
+ * batch_item_levels: niveles de UN inventory item (inventory_item_id).
+ * batch_levels: niveles de varios items a la vez (cada entrada lleva inventory_item_id).
+ * delete: IDs de inventory levels; force borra aunque tengan stock reservado.
+ */
+async function batchInventoryLevels(baseUrl, headers, args) {
+  const body = {};
+  for (const key of ['create', 'update', 'delete', 'force']) {
+    if (args[key] !== undefined) body[key] = args[key];
+  }
+  if (body.create === undefined && body.update === undefined && body.delete === undefined) {
+    throw new Error('At least one of create, update or delete (arrays) is required.');
+  }
+
+  let url;
+  if (args.action === 'batch_item_levels') {
+    if (!args.inventory_item_id) throw new Error('Inventory item ID is required');
+    url = `${baseUrl}/admin/inventory-items/${encodeURIComponent(args.inventory_item_id)}/location-levels/batch`;
+  } else {
+    url = `${baseUrl}/admin/inventory-items/location-levels/batch`;
+  }
+  return await makeRequest(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
+async function getReservation(baseUrl, headers, args) {
+  if (!args.reservation_id) throw new Error('Reservation ID is required');
+  const url = new URL(`${baseUrl}/admin/reservations/${encodeURIComponent(args.reservation_id)}`);
+  appendQueryParam(url.searchParams, 'fields', args.fields);
+  return await makeRequest(url.toString(), { method: 'GET', headers });
+}
+
+async function updateLocationLinks(baseUrl, headers, args) {
+  if (!args.location_id) throw new Error('Location ID is required');
+  const body = {};
+  if (Array.isArray(args.add)) body.add = args.add;
+  if (Array.isArray(args.remove)) body.remove = args.remove;
+  if (!body.add && !body.remove) throw new Error('add and/or remove (arrays of IDs) are required.');
+
+  const locationId = encodeURIComponent(args.location_id);
+  const url = args.action === 'update_location_sales_channels'
+    ? `${baseUrl}/admin/stock-locations/${locationId}/sales-channels`
+    : `${baseUrl}/admin/stock-locations/${locationId}/fulfillment-providers`;
+  return await makeRequest(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_inventory',
@@ -319,7 +416,10 @@ export const apiTool = {
       'Medusa Admin inventory (Medusa 2.17.2+, incl. 2.18 and 2.21.1): inventory items, stock locations, location levels and reservations. ' +
       'create_item/update_item accept sku, title, description, thumbnail, requires_shipping, dimensions, codes, metadata, location_levels (create) and unit_of_measure (Medusa >= 2.20, only sent when provided). ' +
       'Quantities (stocked_quantity, incoming_quantity, reservation quantity) can be fractional on Medusa >= 2.20 (e.g. 1.5 kg with unit_of_measure "kg"); use integers on older stores. ' +
-      'export_items (Medusa >= 2.19) starts an asynchronous CSV export (returns transaction_id; the file arrives as an admin notification).',
+      'export_items (Medusa >= 2.19) starts an asynchronous CSV export (returns transaction_id; the file arrives as an admin notification). ' +
+      'Location levels (stock per location): list_levels, create_level (inventory_item_id + location_id, optional stocked/incoming quantity), update_level, delete_level, ' +
+      'batch_item_levels (inventory_item_id + create [{location_id, stocked_quantity?}] / update [{location_id, ...}] / delete [level IDs], force) and batch_levels (same for many items: each entry has inventory_item_id). ' +
+      'get_reservation (reservation_id). Stock locations: update_location_sales_channels / update_location_fulfillment_providers (location_id + add/remove IDs). Stock changes are visible to the storefront immediately.',
     parameters: {
       type: 'object',
       properties: {
@@ -328,10 +428,44 @@ export const apiTool = {
           enum: [
             'list_items', 'get_item', 'create_item', 'update_item', 'delete_item', 'export_items',
             'list_locations', 'get_location', 'create_location', 'update_location', 'delete_location',
-            'list_levels', 'update_level',
-            'list_reservations', 'create_reservation', 'update_reservation', 'delete_reservation'
+            'update_location_sales_channels', 'update_location_fulfillment_providers',
+            'list_levels', 'create_level', 'update_level', 'delete_level', 'batch_item_levels', 'batch_levels',
+            'list_reservations', 'get_reservation', 'create_reservation', 'update_reservation', 'delete_reservation'
           ],
           description: 'The action to perform on inventory.'
+        },
+        create: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'batch_item_levels / batch_levels: levels to create [{ location_id, stocked_quantity?, incoming_quantity? }] (batch_levels: also inventory_item_id).'
+        },
+        update: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'batch_item_levels / batch_levels: levels to update [{ location_id, stocked_quantity?, incoming_quantity? }] (batch_levels: also inventory_item_id).'
+        },
+        delete: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'batch_item_levels / batch_levels: inventory level IDs to delete.'
+        },
+        force: {
+          type: 'boolean',
+          description: 'batch_item_levels / batch_levels: delete levels even if they have reserved or stocked quantity.'
+        },
+        add: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'update_location_sales_channels / update_location_fulfillment_providers: IDs to link.'
+        },
+        remove: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'update_location_sales_channels / update_location_fulfillment_providers: IDs to unlink.'
+        },
+        fields: {
+          type: 'string',
+          description: 'Fields selector (get_reservation).'
         },
         id: {
           type: 'string',

@@ -74,9 +74,28 @@ async function handleCustomersOperation(args) {
       return await addCustomerToGroup(cleanBaseUrl, headers, args);
     case 'remove_from_group':
       return await removeCustomerFromGroup(cleanBaseUrl, headers, args);
+    case 'update_customer_groups':
+      return await updateCustomerGroups(cleanBaseUrl, headers, args);
     default:
       throw new Error(`Unknown action: ${args.action}`);
   }
+}
+
+/**
+ * Add/remove ONE customer to/from several groups in one call.
+ * POST /admin/customers/{id}/customer-groups { add, remove } (desde 2.17.2, incluida 2.18.0)
+ */
+async function updateCustomerGroups(baseUrl, headers, args) {
+  if (!args.id) throw new Error('Customer ID is required');
+  const body = {};
+  if (Array.isArray(args.add)) body.add = args.add;
+  if (Array.isArray(args.remove)) body.remove = args.remove;
+  if (!body.add && !body.remove) throw new Error('add and/or remove (arrays of customer group IDs) are required');
+  return await makeRequest(`${baseUrl}/admin/customers/${encodeURIComponent(args.id)}/customer-groups`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
 }
 
 // Customer operations
@@ -272,7 +291,9 @@ async function removeCustomerFromGroup(baseUrl, headers, args) {
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_customers',
-    description: 'Comprehensive Medusa Admin customers management tool supporting customer operations (list, get, create, update, delete), address management, and customer group operations.',
+    description:
+      'Comprehensive Medusa Admin customers management tool supporting customer operations (list, get, create, update, delete), address management, and customer group operations. ' +
+      'add_to_group / remove_from_group move one customer in one group; update_customer_groups (customer id + add/remove group IDs) changes several groups of a customer at once (group-based prices and promotions apply immediately).',
     parameters: {
       type: 'object',
       properties: {
@@ -282,9 +303,19 @@ export const apiTool = {
             'list', 'get', 'create', 'update', 'delete',
             'list_addresses', 'get_address', 'create_address', 'update_address', 'delete_address',
             'list_groups', 'get_group', 'create_group', 'update_group', 'delete_group',
-            'add_to_group', 'remove_from_group'
+            'add_to_group', 'remove_from_group', 'update_customer_groups'
           ],
           description: 'The action to perform on customers.'
+        },
+        add: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'update_customer_groups: customer group IDs to add the customer to.'
+        },
+        remove: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'update_customer_groups: customer group IDs to remove the customer from.'
         },
         id: {
           type: 'string',

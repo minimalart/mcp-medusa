@@ -519,10 +519,220 @@ const cancelOrderTransfer = async (args) => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Order update, credit lines, line items, shipping options, payment sessions,
+// export y fulfillments "sueltos" del Fulfillment Module. Todas estas rutas
+// existen desde Medusa 2.17.2 (incluida 2.18.0) hasta 2.21.2.
+// ---------------------------------------------------------------------------
+
+async function getOrderAction(config, path, query) {
+  const url = new URL(`${config.baseUrl}${path}`);
+  Object.entries(query || {}).forEach(([key, value]) => appendQueryParam(url.searchParams, key, value));
+  return await makeRequest(url.toString(), {
+    method: 'GET',
+    headers: createHeaders(config.apiKey)
+  });
+}
+
+/**
+ * Update order email, addresses, locale or metadata.
+ * POST /admin/orders/{id}
+ */
+const updateOrder = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+  if (!args.id) return { error: 'Order ID is required.' };
+
+  const body = pickDefined(args, ['email', 'shipping_address', 'billing_address', 'locale', 'metadata']);
+  if (Object.keys(body).length === 0) {
+    return { error: 'Nothing to update: pass email, shipping_address, billing_address, locale or metadata.' };
+  }
+  try {
+    const data = await postOrderAction(config, `/admin/orders/${encodeURIComponent(args.id)}`, body, { fields: args.fields });
+    return { success: true, message: 'Order updated successfully', order: data };
+  } catch (error) {
+    console.error('Error updating order:', error);
+    return { error: `An error occurred while updating the order: ${error.message}` };
+  }
+};
+
+/**
+ * Add a credit line (manual adjustment of the amount the customer owes / is owed).
+ * POST /admin/orders/{id}/credit-lines
+ */
+const addCreditLine = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+  if (!args.id) return { error: 'Order ID is required.' };
+  if (typeof args.amount !== 'number' || !Number.isFinite(args.amount)) {
+    return { error: 'amount (number) is required for add_credit_line.' };
+  }
+  if (!args.reference || !args.reference_id) {
+    return { error: 'reference and reference_id are required for add_credit_line (e.g. reference "refund", reference_id "ref_...").' };
+  }
+  try {
+    const data = await postOrderAction(
+      config,
+      `/admin/orders/${encodeURIComponent(args.id)}/credit-lines`,
+      pickDefined(args, ['amount', 'reference', 'reference_id', 'metadata']),
+      { fields: args.fields }
+    );
+    return { success: true, message: 'Credit line added', order: data };
+  } catch (error) {
+    console.error('Error adding credit line:', error);
+    return { error: `An error occurred while adding the credit line: ${error.message}` };
+  }
+};
+
+/**
+ * GET /admin/orders/{id}/line-items
+ */
+const listOrderLineItems = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+  if (!args.id) return { error: 'Order ID is required.' };
+  try {
+    return await getOrderAction(config, `/admin/orders/${encodeURIComponent(args.id)}/line-items`, {
+      fields: args.fields,
+      item_id: args.item_id,
+      version: args.version
+    });
+  } catch (error) {
+    console.error('Error listing order line items:', error);
+    return { error: `An error occurred while listing the order line items: ${error.message}` };
+  }
+};
+
+/**
+ * Shipping options that can be used for the order (e.g. for order edits, exchanges).
+ * GET /admin/orders/{id}/shipping-options
+ */
+const listOrderShippingOptions = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+  if (!args.id) return { error: 'Order ID is required.' };
+  try {
+    return await getOrderAction(config, `/admin/orders/${encodeURIComponent(args.id)}/shipping-options`, {});
+  } catch (error) {
+    console.error('Error listing order shipping options:', error);
+    return { error: `An error occurred while listing the order shipping options: ${error.message}` };
+  }
+};
+
+/**
+ * Authorize a payment session of the order (e.g. after creating a payment collection).
+ * POST /admin/orders/{id}/payment-sessions/authorize
+ */
+const authorizePaymentSession = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+  if (!args.id) return { error: 'Order ID is required.' };
+  if (!args.payment_session_id) return { error: 'payment_session_id is required for authorize_payment_session.' };
+  try {
+    const data = await postOrderAction(
+      config,
+      `/admin/orders/${encodeURIComponent(args.id)}/payment-sessions/authorize`,
+      { payment_session_id: args.payment_session_id },
+      { fields: args.fields }
+    );
+    return { success: true, message: 'Payment session authorized', order: data };
+  } catch (error) {
+    console.error('Error authorizing payment session:', error);
+    return { error: `An error occurred while authorizing the payment session: ${error.message}` };
+  }
+};
+
+const ORDER_EXPORT_FILTERS = [
+  'q', 'status', 'sales_channel_id', 'region_id', 'customer_id', 'email', 'currency_code',
+  'fulfillment_status', 'payment_status', 'created_at', 'updated_at'
+];
+
+/**
+ * Asynchronous CSV export of orders. Filters go in the query string (same as list).
+ * POST /admin/orders/export → 202 { transaction_id }; the file arrives as an admin notification.
+ */
+const exportOrders = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+  try {
+    const data = await postOrderAction(config, '/admin/orders/export', {}, {
+      ...pickDefined(args, ORDER_EXPORT_FILTERS),
+      ...(args.query || {})
+    });
+    return { success: true, message: 'Order export started; the CSV arrives as an admin notification', ...data };
+  } catch (error) {
+    console.error('Error exporting orders:', error);
+    return { error: `An error occurred while exporting orders: ${error.message}` };
+  }
+};
+
+/**
+ * Low-level Fulfillment Module routes (not tied to the order fulfillment workflow).
+ *   POST /admin/fulfillments                 create a fulfillment record
+ *   POST /admin/fulfillments/{id}/cancel     cancel it
+ *   POST /admin/fulfillments/{id}/shipment   mark it shipped with labels
+ */
+const createStandaloneFulfillment = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+  const body = pickDefined(args, [
+    'location_id', 'provider_id', 'delivery_address', 'items', 'labels', 'order_id', 'shipping_option_id',
+    'data', 'packed_at', 'shipped_at', 'delivered_at', 'canceled_at', 'metadata'
+  ]);
+  const missing = ['location_id', 'provider_id', 'delivery_address', 'items', 'labels', 'order_id'].filter((key) => body[key] === undefined);
+  if (missing.length > 0) {
+    return { error: `create_standalone_fulfillment requires ${missing.join(', ')} (items: [{ title, sku, quantity, barcode, line_item_id? }]). For a normal order fulfillment use create_fulfillment.` };
+  }
+  // Medusa exige `data` y `metadata` (nullable).
+  if (body.data === undefined) body.data = null;
+  if (body.metadata === undefined) body.metadata = null;
+  try {
+    const data = await postOrderAction(config, '/admin/fulfillments', body, { fields: args.fields });
+    return { success: true, message: 'Fulfillment created', ...data };
+  } catch (error) {
+    console.error('Error creating standalone fulfillment:', error);
+    return { error: `An error occurred while creating the fulfillment: ${error.message}` };
+  }
+};
+
+const cancelStandaloneFulfillment = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+  if (!args.fulfillment_id) return { error: 'Fulfillment ID is required.' };
+  try {
+    const data = await postOrderAction(config, `/admin/fulfillments/${encodeURIComponent(args.fulfillment_id)}/cancel`, {}, { fields: args.fields });
+    return { success: true, message: 'Fulfillment canceled', ...data };
+  } catch (error) {
+    console.error('Error canceling standalone fulfillment:', error);
+    return { error: `An error occurred while canceling the fulfillment: ${error.message}` };
+  }
+};
+
+const createStandaloneShipment = async (args) => {
+  const config = getOrdersConfig();
+  if (config.error) return config;
+  if (!args.fulfillment_id) return { error: 'Fulfillment ID is required.' };
+  if (!Array.isArray(args.labels)) return { error: 'labels is required: [{ tracking_number, tracking_url, label_url }].' };
+  try {
+    const data = await postOrderAction(
+      config,
+      `/admin/fulfillments/${encodeURIComponent(args.fulfillment_id)}/shipment`,
+      { labels: args.labels },
+      { fields: args.fields }
+    );
+    return { success: true, message: 'Fulfillment marked as shipped', ...data };
+  } catch (error) {
+    console.error('Error creating standalone shipment:', error);
+    return { error: `An error occurred while creating the shipment: ${error.message}` };
+  }
+};
+
 const ACTIONS = [
-  'list', 'get', 'cancel', 'complete', 'archive',
+  'list', 'get', 'update', 'cancel', 'complete', 'archive', 'export',
   'transfer', 'transfer_to_guest', 'cancel_transfer',
-  'list_fulfillments', 'create_fulfillment', 'create_shipment', 'mark_as_delivered', 'cancel_fulfillment'
+  'list_line_items', 'list_shipping_options', 'add_credit_line', 'authorize_payment_session',
+  'list_fulfillments', 'create_fulfillment', 'create_shipment', 'mark_as_delivered', 'cancel_fulfillment',
+  'create_standalone_fulfillment', 'cancel_standalone_fulfillment', 'create_standalone_shipment'
 ];
 
 /**
@@ -562,6 +772,24 @@ const executeFunction = async (args) => {
       return await markFulfillmentAsDelivered(operationArgs);
     case 'cancel_fulfillment':
       return await cancelFulfillment(operationArgs);
+    case 'update':
+      return await updateOrder(operationArgs);
+    case 'export':
+      return await exportOrders(operationArgs);
+    case 'list_line_items':
+      return await listOrderLineItems(operationArgs);
+    case 'list_shipping_options':
+      return await listOrderShippingOptions(operationArgs);
+    case 'add_credit_line':
+      return await addCreditLine(operationArgs);
+    case 'authorize_payment_session':
+      return await authorizePaymentSession(operationArgs);
+    case 'create_standalone_fulfillment':
+      return await createStandaloneFulfillment(operationArgs);
+    case 'cancel_standalone_fulfillment':
+      return await cancelStandaloneFulfillment(operationArgs);
+    case 'create_standalone_shipment':
+      return await createStandaloneShipment(operationArgs);
     default:
       return { error: `Invalid action: ${action}. Valid actions are: ${ACTIONS.join(', ')}` };
   }
@@ -580,7 +808,11 @@ const apiTool = {
       'transfer_to_guest (email: moves the order to a guest customer with that email, e.g. to fix a mistyped email; Medusa >= 2.18), cancel_transfer (cancels a pending transfer request). ' +
       'Fulfillment flow: list_fulfillments → create_fulfillment (items [{id: order line item ID, quantity}], optional location_id, shipping_option_id, no_notification, metadata, delivery_address (Medusa >= 2.19)) → ' +
       'create_shipment (fulfillment_id + items, optional labels [{tracking_number, tracking_url, label_url}]) → mark_as_delivered (fulfillment_id); cancel_fulfillment (fulfillment_id, only if not shipped). ' +
-      'Fulfillment, shipment and delivery actions notify the customer unless no_notification is true.',
+      'Fulfillment, shipment and delivery actions notify the customer unless no_notification is true. ' +
+      'update (email, shipping_address, billing_address, locale, metadata); list_line_items; list_shipping_options (options usable for this order); ' +
+      'add_credit_line (amount + reference + reference_id: changes what the customer owes or is owed); authorize_payment_session (payment_session_id; authorizes the payment with the provider). ' +
+      'export: starts an asynchronous CSV export of ALL orders matching the list filters (or query); returns transaction_id and the file arrives as an admin notification. ' +
+      'create_standalone_fulfillment / cancel_standalone_fulfillment / create_standalone_shipment (fulfillment_id + labels): low-level Fulfillment Module records (/admin/fulfillments) that do not run the order workflow; prefer the order fulfillment actions above.',
     parameters: {
         type: 'object',
         properties: {

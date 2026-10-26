@@ -50,9 +50,28 @@ async function handleCollectionsOperation(args) {
       return await removeProductsFromCollection(cleanBaseUrl, headers, args);
     case 'list_products':
       return await listCollectionProducts(cleanBaseUrl, headers, args);
+    case 'update_products':
+      return await updateCollectionProducts(cleanBaseUrl, headers, args);
     default:
       throw new Error(`Unknown action: ${args.action}`);
   }
+}
+
+/**
+ * Link/unlink products in one call through the collection route.
+ * POST /admin/collections/{id}/products { add, remove } (desde 2.17.2, incluida 2.18.0)
+ */
+async function updateCollectionProducts(baseUrl, headers, args) {
+  if (!args.id) throw new Error('Collection ID is required');
+  const body = {};
+  if (Array.isArray(args.add)) body.add = args.add;
+  if (Array.isArray(args.remove)) body.remove = args.remove;
+  if (!body.add && !body.remove) throw new Error('add and/or remove (arrays of product IDs) are required');
+  return await makeRequest(`${baseUrl}/admin/collections/${encodeURIComponent(args.id)}/products`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
 }
 
 // Collection operations
@@ -163,7 +182,9 @@ async function listCollectionProducts(baseUrl, headers, args) {
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_collections',
-    description: 'Comprehensive Medusa Admin collections management tool supporting collection operations (list, get, create, update, delete) and product association management.',
+    description:
+      'Comprehensive Medusa Admin collections management tool supporting collection operations (list, get, create, update, delete) and product association management. ' +
+      'add_products / remove_products (product_ids) update each product; update_products (id + add/remove product IDs) does it in one call through POST /admin/collections/{id}/products.',
     parameters: {
       type: 'object',
       properties: {
@@ -171,9 +192,19 @@ export const apiTool = {
           type: 'string',
           enum: [
             'list', 'get', 'create', 'update', 'delete',
-            'add_products', 'remove_products', 'list_products'
+            'add_products', 'remove_products', 'list_products', 'update_products'
           ],
           description: 'The action to perform on collections.'
+        },
+        add: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'update_products: product IDs to add to the collection.'
+        },
+        remove: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'update_products: product IDs to remove from the collection.'
         },
         id: {
           type: 'string',

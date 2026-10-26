@@ -37,9 +37,35 @@ async function handleTaxesOperation(args) {
       return await updateTaxRegion(baseUrl, headers, args);
     case 'delete_tax_region':
       return await deleteTaxRegion(baseUrl, headers, args);
+    case 'create_tax_rate_rule':
+      return await createTaxRateRule(baseUrl, headers, args);
+    case 'delete_tax_rate_rule':
+      return await deleteTaxRateRule(baseUrl, headers, args);
     default:
       throw new Error(`Unknown action: ${args.action}`);
   }
+}
+
+// Tax rate rules (presentes desde 2.17.2, incluida 2.18.0): la tasa aplica sólo a los
+// productos / product types referenciados.
+//   POST   /admin/tax-rates/{id}/rules             { reference: product|product_type, reference_id }
+//   DELETE /admin/tax-rates/{id}/rules/{rule_id}
+async function createTaxRateRule(baseUrl, headers, args) {
+  if (!args.id) throw new Error('Tax rate ID is required');
+  if (!args.reference || !args.reference_id) throw new Error('reference (e.g. product, product_type) and reference_id are required');
+  const url = `${baseUrl}/admin/tax-rates/${encodeURIComponent(args.id)}/rules`;
+  return await makeRequest(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ reference: args.reference, reference_id: args.reference_id })
+  });
+}
+
+async function deleteTaxRateRule(baseUrl, headers, args) {
+  if (!args.id) throw new Error('Tax rate ID is required');
+  if (!args.rule_id) throw new Error('rule_id is required');
+  const url = `${baseUrl}/admin/tax-rates/${encodeURIComponent(args.id)}/rules/${encodeURIComponent(args.rule_id)}`;
+  return await makeRequest(url, { method: 'DELETE', headers });
 }
 
 // Tax Rates operations
@@ -170,7 +196,9 @@ async function deleteTaxRegion(baseUrl, headers, args) {
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_taxes',
-    description: 'Comprehensive Medusa Admin tax management tool supporting tax rates and tax regions.',
+    description:
+      'Comprehensive Medusa Admin tax management tool supporting tax rates and tax regions. ' +
+      'Tax rate rules restrict a (non-default) rate to specific products or product types: create_tax_rate_rule (id + reference product|product_type + reference_id), delete_tax_rate_rule (id + rule_id). Tax changes apply to new carts immediately.',
     parameters: {
       type: 'object',
       properties: {
@@ -178,10 +206,14 @@ export const apiTool = {
           type: 'string',
           enum: [
             'list_tax_rates', 'get_tax_rate', 'create_tax_rate', 'update_tax_rate', 'delete_tax_rate',
-            'list_tax_regions', 'get_tax_region', 'create_tax_region', 'update_tax_region', 'delete_tax_region'
+            'list_tax_regions', 'get_tax_region', 'create_tax_region', 'update_tax_region', 'delete_tax_region',
+            'create_tax_rate_rule', 'delete_tax_rate_rule'
           ],
           description: 'The action to perform on taxes.'
         },
+        rule_id: { type: 'string', description: 'Tax rate rule ID (delete_tax_rate_rule).' },
+        reference: { type: 'string', description: 'create_tax_rate_rule: what the rule targets, e.g. product or product_type.' },
+        reference_id: { type: 'string', description: 'create_tax_rate_rule: ID of the product / product type.' },
         id: { type: 'string', description: 'Tax rate ID.' },
         tax_region_id: { type: 'string', description: 'Tax region ID.' },
         limit: { type: 'number', description: 'Maximum number of items to return.' },

@@ -36,6 +36,81 @@ export const RESOURCES = {
       import_job: { method: 'GET', path: '/{id}/import-job', note: 'Estado del provisioning/importación.' },
       create_promotions: { method: 'POST', path: '/{id}/promotions' },
       retry: { method: 'POST', path: '/{id}/retry', note: 'Reintenta el provisioning.' },
+      verify_custom_domain: {
+        method: 'POST',
+        path: '/{id}/custom-domain/verify',
+        impact: 'high',
+        note: 'body opcional {domain}: con domain lo guarda (pending) y verifica; sin body verifica el guardado. Si verifica, pasa a active y es la URL pública de la tienda (canonical, links, retornos de pago). Si falla, el mensaje empieza con el código ([dns_not_found], [tls_error], [not_associated]…).',
+      },
+      link_checkout_provider: {
+        method: 'POST',
+        path: '/{id}/checkout/link-provider',
+        impact: 'high',
+        requires: ['body.provider_id'],
+        note: 'Habilita un medio de pago instalado en la región de la tienda: body {provider_id} (ej. pp_modo_modo). Idempotente (linked:false si ya estaba); 404 no instalado, 422 deshabilitado o sólo-ARS en región sin pesos.',
+      },
+      get_directory_preview: { method: 'GET', path: '/directory/preview', note: 'Contexto del preview del directorio (sitio virtual y países).' },
+      directory_preview: {
+        method: 'POST',
+        path: '/directory/preview',
+        mutating: false,
+        note: 'Preview del directorio de tiendas con un documento sin guardar: body {site_id:"directory", country_code, parent_origin, language?, mode?, section?, puck_data}. Devuelve un token corto (no publica).',
+      },
+    },
+  },
+  // Páginas y header/footer: se editan desde Tiendas → editar tienda.
+  site_pages: {
+    path: '/admin/sites',
+    ops: [],
+    summary: 'Páginas institucionales de una tienda (id = site_id, child_id = page_id)',
+    notes:
+      'create_page body {title, slug?, draft?, seo?} (sin slug se genera del título; nace en borrador). update_page edita título, slug, borrador o SEO: en una publicada sólo cambia el borrador hasta republicar; cambiar el slug de una publicada deja un redirect. get_page devuelve también dónde está enlazada (menú/footer).',
+    children: {
+      pages: { path: '/{id}/pages', ops: ['list', 'get', 'create', 'update'] },
+    },
+    subActions: {
+      set_page_status: {
+        method: 'POST',
+        path: '/{id}/pages/{child_id}/status',
+        impact: 'high',
+        requires: ['body.action'],
+        note: 'body {action: publish|unpublish|archive|restore}: cambia lo que ve el público. La respuesta trae dónde estaba enlazada.',
+      },
+    },
+  },
+  site_chrome: {
+    path: '/admin/sites',
+    ops: [],
+    summary: 'Header y footer de una tienda: borrador, preview y publicación (id = site_id)',
+    notes:
+      'Flujo: save_draft → (preview) → publish. El borrador nunca cambia el sitio público. base_revision = chrome_revision actual del sitio (409 si es vieja). Lo publicado se ve en la tienda en ≤60 s.',
+    subActions: {
+      save_draft: {
+        method: 'POST',
+        path: '/{id}/chrome-draft',
+        requires: ['body.part', 'body.draft', 'body.base_revision'],
+        note: 'body {part: header|footer, draft: {...}, base_revision}.',
+      },
+      discard_draft: {
+        method: 'DELETE',
+        path: '/{id}/chrome-draft',
+        requires: ['query.part'],
+        note: 'query {part: header|footer}.',
+      },
+      get_preview: { method: 'GET', path: '/{id}/chrome-preview' },
+      preview: {
+        method: 'POST',
+        path: '/{id}/chrome-preview',
+        mutating: false,
+        note: 'Preview con un override sin guardar: devuelve un token corto para el iframe del admin (no publica).',
+      },
+      publish: {
+        method: 'POST',
+        path: '/{id}/chrome-publish',
+        impact: 'high',
+        requires: ['body.part', 'body.base_revision'],
+        note: 'Publica el borrador de UNA parte en la tienda pública: body {part: header|footer, base_revision}.',
+      },
     },
   },
   site_templates: {
@@ -60,11 +135,6 @@ export const RESOURCES = {
       },
     },
   },
-  product_sales_modes: {
-    path: '/admin/product-sales-modes',
-    ops: ['list', 'create'],
-    summary: 'Modo de venta por producto y tienda (list query {site_id, product_id[]}; create = upsert body {site_id, product_id, sales_mode})',
-  },
 
   // ─── Configuración de la tienda ────────────────────────────────────────────
   store_settings: { path: '/admin/store-config/settings', singleton: true, summary: 'Ajustes generales de la tienda' },
@@ -78,20 +148,10 @@ export const RESOURCES = {
     readOnly: true,
     summary: 'URL pública del storefront',
   },
-  store_commerce: {
-    path: '/admin/store-config/commerce',
-    ops: [],
-    summary: 'País/moneda/idioma: contexto, plan y aplicación',
-    subActions: {
-      context: { method: 'GET', path: '/context' },
-      plan: {
-        method: 'POST',
-        path: '/plan',
-        mutating: false,
-        note: 'Calcula operaciones sin aplicar: body {country_code, currency_code, locale}.',
-      },
-      apply: { method: 'POST', path: '/apply', impact: 'high', note: 'Crea región / agrega moneda (usar el plan antes).' },
-    },
+  minimum_purchases: {
+    path: '/admin/store-config/minimum-purchase',
+    ops: ['list', 'create', 'update', 'delete'],
+    summary: 'Montos mínimos de compra (condiciones de compra de la tienda)',
   },
   app_settings: {
     path: '/admin/app-settings',
@@ -140,7 +200,10 @@ export const RESOURCES = {
 };
 
 const GROUPS = [
-  { title: 'Multistore', resources: ['sites', 'site_templates', 'catalog_imports', 'product_sales_modes'] },
+  {
+    title: 'Multistore',
+    resources: ['sites', 'site_pages', 'site_chrome', 'site_templates', 'catalog_imports'],
+  },
   {
     title: 'Configuración de la tienda',
     resources: [
@@ -150,7 +213,7 @@ const GROUPS = [
       'store_legal_pages',
       'store_site_gate',
       'storefront_url',
-      'store_commerce',
+      'minimum_purchases',
       'app_settings',
     ],
   },
@@ -160,7 +223,7 @@ const GROUPS = [
 const tool = createExtensionTool({
   name: 'manage_minimalart_stores',
   intro:
-    'TIENDAS y configuración del backoffice: multistore (sites → site_id para todas las tools), plantillas, importación de catálogo, configuración de la tienda, app-settings y plataforma Mercatto.',
+    'TIENDAS y configuración del backoffice: multistore (sites → site_id para todas las tools; páginas y header/footer de cada tienda), plantillas, importación de catálogo, configuración de la tienda, app-settings y plataforma Mercatto.',
   resources: RESOURCES,
   groups: GROUPS,
 });

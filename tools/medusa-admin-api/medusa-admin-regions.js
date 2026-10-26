@@ -9,6 +9,12 @@
  *   GET|POST|DELETE /admin/fulfillment-sets/{id}/service-zones/{zone_id}
  * No hay GET /admin/fulfillment-sets ni POST /admin/fulfillment-sets[/{id}]: el listado
  * se arma leyendo `fulfillment_sets` desde las stock locations.
+ *
+ * Rutas agregadas en 1.9 (presentes desde 2.17.2, incluida 2.18.0, hasta 2.21.2):
+ *   GET|POST /admin/shipping-option-types                         listar / crear { label, code, description? }
+ *   GET|POST|DELETE /admin/shipping-option-types/{id}
+ *   GET    /admin/fulfillment-providers/{id}/options                opciones de fulfillment del provider
+ *   POST   /admin/shipping-options/{id}/rules/batch                 { create, update, delete }
  */
 
 import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
@@ -78,6 +84,16 @@ async function handleRegionsOperation(args) {
       return await listFulfillmentProviders(baseUrl, headers, args);
     case 'list_fulfillment_sets':
       return await listFulfillmentSets(baseUrl, headers, args);
+    case 'list_fulfillment_provider_options':
+      return await listFulfillmentProviderOptions(baseUrl, headers, args);
+    case 'batch_shipping_option_rules':
+      return await batchShippingOptionRules(baseUrl, headers, args);
+    case 'list_shipping_option_types':
+    case 'get_shipping_option_type':
+    case 'create_shipping_option_type':
+    case 'update_shipping_option_type':
+    case 'delete_shipping_option_type':
+      return await shippingOptionTypeOperation(baseUrl, headers, args);
     case 'create_fulfillment_set':
       return await createFulfillmentSet(baseUrl, headers, args);
     case 'delete_fulfillment_set':
@@ -409,6 +425,58 @@ async function deleteServiceZone(baseUrl, headers, args) {
   return await makeRequest(url, { method: 'DELETE', headers });
 }
 
+async function listFulfillmentProviderOptions(baseUrl, headers, args) {
+  if (!args.provider_id) throw new Error('provider_id is required (see list_fulfillment_providers)');
+  const url = `${baseUrl}/admin/fulfillment-providers/${encodeURIComponent(args.provider_id)}/options`;
+  return await makeRequest(url, { method: 'GET', headers });
+}
+
+async function batchShippingOptionRules(baseUrl, headers, args) {
+  if (!args.shipping_option_id) throw new Error('Shipping option ID is required');
+  const body = {};
+  for (const key of ['create', 'update', 'delete']) {
+    if (args[key] !== undefined) body[key] = args[key];
+  }
+  if (Object.keys(body).length === 0) {
+    throw new Error('At least one of create ([{attribute, operator, value}]), update ([{id, attribute, operator, value}]) or delete ([rule IDs]) is required.');
+  }
+  const url = `${baseUrl}/admin/shipping-options/${encodeURIComponent(args.shipping_option_id)}/rules/batch`;
+  return await makeRequest(url, { method: 'POST', headers, body: JSON.stringify(body) });
+}
+
+async function shippingOptionTypeOperation(baseUrl, headers, args) {
+  const body = {};
+  for (const key of ['label', 'code', 'description']) {
+    if (args[key] !== undefined) body[key] = args[key];
+  }
+
+  if (args.action === 'list_shipping_option_types') {
+    const url = new URL(`${baseUrl}/admin/shipping-option-types`);
+    for (const key of ['limit', 'offset', 'q', 'fields']) appendQueryParam(url.searchParams, key, args[key]);
+    return await makeRequest(url.toString(), { method: 'GET', headers });
+  }
+  if (args.action === 'create_shipping_option_type') {
+    if (!body.label || !body.code) throw new Error('label and code are required for create_shipping_option_type');
+    return await makeRequest(`${baseUrl}/admin/shipping-option-types`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    });
+  }
+
+  if (!args.shipping_option_type_id) throw new Error('shipping_option_type_id is required');
+  const url = `${baseUrl}/admin/shipping-option-types/${encodeURIComponent(args.shipping_option_type_id)}`;
+  if (args.action === 'get_shipping_option_type') {
+    const target = new URL(url);
+    appendQueryParam(target.searchParams, 'fields', args.fields);
+    return await makeRequest(target.toString(), { method: 'GET', headers });
+  }
+  if (args.action === 'update_shipping_option_type') {
+    return await makeRequest(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  }
+  return await makeRequest(url, { method: 'DELETE', headers });
+}
+
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_regions',
@@ -416,6 +484,9 @@ export const apiTool = {
       'Medusa Admin regions and shipping (Medusa 2.17.2+, incl. 2.18 and 2.21.1): regions, shipping options, shipping profiles, fulfillment providers, fulfillment sets and service zones. ' +
       'Fulfillment sets belong to a stock location: list_fulfillment_sets (optional location_id) reads them from stock locations, create_fulfillment_set needs location_id + name + type, delete_fulfillment_set needs fulfillment_set_id. ' +
       'Service zones: create_service_zone (fulfillment_set_id + name, optional geo_zones), get/update/delete_service_zone (fulfillment_set_id + service_zone_id). ' +
+      'Shipping option types (e.g. standard/express labels shown at checkout): list/get/create/update/delete_shipping_option_type (shipping_option_type_id; label, code, description). ' +
+      'list_fulfillment_provider_options (provider_id) lists the options a provider offers for create_shipping_option. ' +
+      'batch_shipping_option_rules (shipping_option_id + create [{attribute, operator, value}] / update [{id, ...}] / delete [rule IDs]) changes who can see an option (e.g. attribute is_return, enabled_in_store); changes apply to checkout immediately. ' +
       'update_fulfillment_set was removed (Medusa v2 has no such route).',
     parameters: {
       type: 'object',
@@ -426,11 +497,20 @@ export const apiTool = {
             'list_regions', 'get_region', 'create_region', 'update_region', 'delete_region',
             'list_shipping_options', 'get_shipping_option', 'create_shipping_option', 'update_shipping_option', 'delete_shipping_option',
             'list_shipping_profiles', 'get_shipping_profile', 'create_shipping_profile', 'update_shipping_profile', 'delete_shipping_profile',
-            'list_fulfillment_providers', 'list_fulfillment_sets', 'create_fulfillment_set', 'delete_fulfillment_set',
-            'create_service_zone', 'get_service_zone', 'update_service_zone', 'delete_service_zone'
+            'list_fulfillment_providers', 'list_fulfillment_provider_options', 'list_fulfillment_sets', 'create_fulfillment_set', 'delete_fulfillment_set',
+            'create_service_zone', 'get_service_zone', 'update_service_zone', 'delete_service_zone',
+            'batch_shipping_option_rules',
+            'list_shipping_option_types', 'get_shipping_option_type', 'create_shipping_option_type', 'update_shipping_option_type', 'delete_shipping_option_type'
           ],
           description: 'The action to perform.'
         },
+        shipping_option_type_id: { type: 'string', description: 'Shipping option type ID (get/update/delete_shipping_option_type).' },
+        label: { type: 'string', description: 'Shipping option type label.' },
+        code: { type: 'string', description: 'Shipping option type code.' },
+        description: { type: 'string', description: 'Shipping option type description.' },
+        create: { type: 'array', items: { type: 'object' }, description: 'batch_shipping_option_rules: rules to create [{ attribute, operator, value }].' },
+        update: { type: 'array', items: { type: 'object' }, description: 'batch_shipping_option_rules: rules to update [{ id, attribute, operator, value }].' },
+        delete: { type: 'array', items: { type: 'string' }, description: 'batch_shipping_option_rules: rule IDs to delete.' },
         id: { type: 'string', description: 'Region ID.' },
         shipping_option_id: { type: 'string', description: 'Shipping option ID.' },
         profile_id: { type: 'string', description: 'Shipping profile ID.' },
