@@ -122,6 +122,11 @@ export const RESOURCES = {
     notes:
       'id = product_id. get devuelve revision, set, attributes (habilitados en la tienda activa), product.values (heredados por todas las variantes) y variants[] con values (propios) y effective (lo que muestra). update body {expected_revision (de get), set_id?: string|null, product?: {set: [{code, value, unit?}], unset: [code]}, variants?: [{variant_id, set, unset}]}: cargá en `product` lo que es igual para todas y en `variants` sólo lo que cambia; `unset` en una variante la vuelve a heredar. Todo o nada; 409 si otro cambio se guardó (volvé a leer). Selecciones por código, etiqueta o alias.',
   },
+  product_sales_modes: {
+    path: '/admin/product-sales-modes',
+    ops: ['list', 'create'],
+    summary: 'Modo de venta por producto y tienda (widget de la página de producto) (list query {site_id, product_id[]}; create = upsert body {site_id, product_id, sales_mode})',
+  },
   attribute_imports: {
     path: '/admin/attribute-imports',
     ops: ['list', 'get', 'create'],

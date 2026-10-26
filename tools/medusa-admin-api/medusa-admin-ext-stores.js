@@ -135,11 +135,6 @@ export const RESOURCES = {
       },
     },
   },
-  product_sales_modes: {
-    path: '/admin/product-sales-modes',
-    ops: ['list', 'create'],
-    summary: 'Modo de venta por producto y tienda (list query {site_id, product_id[]}; create = upsert body {site_id, product_id, sales_mode})',
-  },
 
   // ─── Configuración de la tienda ────────────────────────────────────────────
   store_settings: { path: '/admin/store-config/settings', singleton: true, summary: 'Ajustes generales de la tienda' },
@@ -207,7 +202,7 @@ export const RESOURCES = {
 const GROUPS = [
   {
     title: 'Multistore',
-    resources: ['sites', 'site_pages', 'site_chrome', 'site_templates', 'catalog_imports', 'product_sales_modes'],
+    resources: ['sites', 'site_pages', 'site_chrome', 'site_templates', 'catalog_imports'],
   },
   {
     title: 'Configuración de la tienda',

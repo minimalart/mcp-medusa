@@ -215,4 +215,7 @@ test("cada sección en una sola tool: compras mínimas en stores, pedidos B2B y 
   assert.equal(ext.get("branch_types.list"), "GET /admin/branch-types");
   assert.equal(commerce.extensionResources.b2b_draft_orders, undefined);
   assert.equal(logistics.extensionResources.branch_types, undefined);
+  // Modo de venta por tienda: widget de la página de producto, junto a la ficha técnica.
+  assert.equal(ext.get("product_sales_modes.list"), "GET /admin/product-sales-modes");
+  assert.equal(stores.extensionResources.product_sales_modes, undefined);
 });
