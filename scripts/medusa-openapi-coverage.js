@@ -11,7 +11,16 @@
  * Output (JSON on stdout):
  *   - specVersion: `info.version` of the spec (e.g. 2.21.1)
  *   - missingOperations: every "METHOD /path" in the spec (/admin and /auth) with no dedicated tool call
+ *     that is not intentionally excluded
+ *   - excludedOperations: [{ operation, reason }] spec operations without a dedicated action ON PURPOSE
+ *     (see EXCLUDED_OPERATIONS below); they are not counted as missing
  *   - repoRoutesNotInSpec: tool calls that are not in the core spec (plugin/custom routes, or broken calls)
+ *
+ * Intentional exclusions: EXCLUDED_OPERATIONS lists { methods, pattern, reason } for operations that
+ * must not get a dedicated action (credential/auth flows, security-sensitive routes, SSE streams,
+ * internal workflow-engine control). An excluded operation that a tool does call still counts as
+ * covered (and is reported in coveredButExcluded so the list can be revisited). To exclude a new
+ * route, add an entry with a short reason; never exclude something just because it is not done yet.
  *
  * Route extraction from the tools is static and heuristic:
  *   - string and template literals in code (comments ignored) that contain /admin/ or /auth/,
@@ -33,6 +42,51 @@ import { toolPaths } from "../tools/paths.js";
 const OPENAPI_URL = process.env.MEDUSA_OPENAPI_URL || "https://docs.medusajs.com/api/download/admin";
 const METHODS = ["get", "post", "put", "patch", "delete"];
 const METHOD_WINDOW_LINES = 10;
+
+/**
+ * Spec operations that intentionally have no dedicated action. `methods: null` = every method.
+ * `pattern` is matched against the spec path as written (e.g. /admin/users/{id}/reset-password).
+ */
+const EXCLUDED_OPERATIONS = [
+  {
+    methods: null,
+    pattern: /^\/auth(\/|$)/,
+    reason:
+      "auth flows (sessions, token refresh, MFA enrollment/challenges, provider login/register/callback/reset/update) " +
+      "handle credentials of the connected user; done in the admin dashboard (manage_medusa_admin_v2 request only allows GET and token refresh)",
+  },
+  {
+    methods: ["POST"],
+    pattern: /^\/admin\/invites\/accept$/,
+    reason: "accepting an invite needs the invitee's own invite token and password; never done by an agent",
+  },
+  {
+    methods: ["GET"],
+    pattern: /^\/admin\/plugins$/,
+    reason: "lists installed backend plugins (internal deployment info, security-sensitive)",
+  },
+  {
+    methods: ["POST"],
+    pattern: /^\/admin\/users\/\{[^}]+\}\/reset-password$/,
+    reason: "returns a live password reset token (blocked in manage_medusa_admin_v2 request too)",
+  },
+  {
+    methods: ["GET"],
+    pattern: /^\/admin\/workflows-executions\/.+\/subscribe$/,
+    reason: "Server-Sent Events stream; streaming responses are not supported through MCP",
+  },
+  {
+    methods: ["POST"],
+    pattern: /^\/admin\/workflows-executions\/\{[^}]+\}\/(run|steps\/success|steps\/failure)$/,
+    reason: "internal workflow-engine control (run a workflow, force a step result); not an operator action",
+  },
+];
+
+function exclusionFor(operation) {
+  return EXCLUDED_OPERATIONS.find(
+    (entry) => (!entry.methods || entry.methods.includes(operation.method)) && entry.pattern.test(operation.path)
+  );
+}
 
 function argValue(flag) {
   const index = process.argv.indexOf(flag);
@@ -360,14 +414,21 @@ async function main() {
   const coveredPaths = new Set(repoRoutes.map((route) => normalizeRoute(route.path)));
   const specKeys = new Set(operations.map((operation) => `${operation.method} ${normalizeRoute(operation.path)}`));
 
-  const missingOperations = operations
-    .filter((operation) => !covered.has(`${operation.method} ${normalizeRoute(operation.path)}`))
-    .map((operation) => `${operation.method} ${operation.path}`)
-    .sort((a, b) => a.split(" ")[1].localeCompare(b.split(" ")[1]) || a.localeCompare(b));
+  const byPath = (a, b) => a.split(" ")[1].localeCompare(b.split(" ")[1]) || a.localeCompare(b);
+  const isCovered = (operation) => covered.has(`${operation.method} ${normalizeRoute(operation.path)}`);
+  const label = (operation) => `${operation.method} ${operation.path}`;
+
+  const uncovered = operations.filter((operation) => !isCovered(operation));
+  const missingOperations = uncovered.filter((operation) => !exclusionFor(operation)).map(label).sort(byPath);
+  const excludedOperations = uncovered
+    .filter((operation) => exclusionFor(operation))
+    .map((operation) => ({ operation: label(operation), reason: exclusionFor(operation).reason }))
+    .sort((a, b) => byPath(a.operation, b.operation));
+  const coveredButExcluded = operations.filter((operation) => isCovered(operation) && exclusionFor(operation)).map(label).sort(byPath);
 
   const missingPathsWithoutAnyMethod = [...new Set(
     operations
-      .filter((operation) => !coveredPaths.has(normalizeRoute(operation.path)))
+      .filter((operation) => !coveredPaths.has(normalizeRoute(operation.path)) && !exclusionFor(operation))
       .map((operation) => operation.path)
   )].sort();
 
@@ -375,9 +436,9 @@ async function main() {
   for (const route of repoRoutes) {
     const key = `${route.method} ${normalizeRoute(route.path)}`;
     if (specKeys.has(key)) continue;
-    const label = `${route.method} ${route.path}`;
-    if (!notInSpec.has(label)) notInSpec.set(label, new Set());
-    notInSpec.get(label).add(route.tool);
+    const routeLabel = `${route.method} ${route.path}`;
+    if (!notInSpec.has(routeLabel)) notInSpec.set(routeLabel, new Set());
+    notInSpec.get(routeLabel).add(route.tool);
   }
 
   const report = {
@@ -388,16 +449,20 @@ async function main() {
     specTags: extractSpecTags(yaml),
     toolCount: tools.length,
     tools: tools.map((tool) => tool.mod.apiTool?.definition?.name).filter(Boolean).sort(),
-    coveredOperationCount: operations.length - missingOperations.length,
+    coveredOperationCount: operations.length - uncovered.length,
     missingOperationCount: missingOperations.length,
+    excludedOperationCount: excludedOperations.length,
     missingOperations,
+    excludedOperations,
+    coveredButExcluded,
     missingPathsWithoutAnyMethod,
     repoRoutesNotInSpec: [...notInSpec.entries()]
       .map(([route, toolNames]) => ({ route, tools: [...toolNames].sort() }))
       .sort((a, b) => a.route.split(" ")[1].localeCompare(b.route.split(" ")[1]) || a.route.localeCompare(b.route)),
     note:
       "Route extraction is heuristic. Every /admin/* and /auth* route is reachable through manage_medusa_admin_v2 action=request; " +
-      "missingOperations lists routes without a dedicated action. repoRoutesNotInSpec includes plugin/custom routes " +
+      "missingOperations lists routes without a dedicated action; excludedOperations are left without one on purpose " +
+      "(EXCLUDED_OPERATIONS in this script, each with its reason). repoRoutesNotInSpec includes plugin/custom routes " +
       "(loyalty, extensions) and would reveal calls to routes that do not exist.",
   };
 

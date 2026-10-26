@@ -1,9 +1,23 @@
 /**
  * Comprehensive Medusa Admin Pricing & Promotions Management Tool
  * Supports price lists, promotions, campaigns management
+ *
+ * Rutas agregadas en 1.9 (todas presentes desde Medusa 2.17.2, incluida 2.18.0, hasta 2.21.2):
+ *   GET    /admin/price-lists/{id}/prices
+ *   POST   /admin/price-lists/{id}/prices/batch                       { create, update, delete }
+ *   POST   /admin/price-lists/{id}/products                           { remove: product IDs } (quita sus precios)
+ *   GET    /admin/promotions/{id}/{rule_type}                         rules | target-rules | buy-rules
+ *   POST   /admin/promotions/{id}/rules/batch                         { create, update, delete }
+ *   POST   /admin/promotions/{id}/target-rules/batch
+ *   POST   /admin/promotions/{id}/buy-rules/batch
+ *   GET    /admin/promotions/rule-attribute-options/{rule_type}
+ *   GET    /admin/promotions/rule-value-options/{rule_type}/{rule_attribute_id}
+ *   POST   /admin/campaigns/{id}/promotions                           { add, remove } (promotion IDs)
+ *   GET|POST /admin/price-preferences
+ *   GET|POST|DELETE /admin/price-preferences/{id}
  */
 
-import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
 import { sentGatedFields, withGatedFields, withMedusaErrorHints } from "../../lib/medusa-version.js";
 
 // metadata en promociones existe desde Medusa 2.21 (en 2.18 el validador estricto lo rechaza):
@@ -52,6 +66,28 @@ async function handlePricingOperation(args) {
       return await updateCampaign(baseUrl, headers, args);
     case 'delete_campaign':
       return await deleteCampaign(baseUrl, headers, args);
+    case 'update_campaign_promotions':
+      return await updateCampaignPromotions(baseUrl, headers, args);
+    case 'list_price_list_prices':
+      return await listPriceListPrices(baseUrl, headers, args);
+    case 'batch_price_list_prices':
+      return await batchPriceListPrices(baseUrl, headers, args);
+    case 'remove_price_list_products':
+      return await removePriceListProducts(baseUrl, headers, args);
+    case 'list_promotion_rules':
+      return await listPromotionRules(baseUrl, headers, args);
+    case 'batch_promotion_rules':
+      return await batchPromotionRules(baseUrl, headers, args);
+    case 'list_rule_attribute_options':
+      return await listRuleAttributeOptions(baseUrl, headers, args);
+    case 'list_rule_value_options':
+      return await listRuleValueOptions(baseUrl, headers, args);
+    case 'list_price_preferences':
+    case 'get_price_preference':
+    case 'create_price_preference':
+    case 'update_price_preference':
+    case 'delete_price_preference':
+      return await pricePreferenceOperation(baseUrl, headers, args);
     default:
       throw new Error(`Unknown action: ${args.action}`);
   }
@@ -326,22 +362,208 @@ async function deleteCampaign(baseUrl, headers, args) {
   return await makeRequest(url, { method: 'DELETE', headers });
 }
 
+// ---------------------------------------------------------------------------
+// Price list prices, promotion rules, campaign promotions, price preferences
+// ---------------------------------------------------------------------------
+
+const RULE_TYPES = ['rules', 'target-rules', 'buy-rules'];
+const PROMOTIONS_PATH = '/admin/promotions';
+
+function pickDefined(source, keys) {
+  const out = {};
+  for (const key of keys) {
+    if (source[key] !== undefined) out[key] = source[key];
+  }
+  return out;
+}
+
+function withQuery(url, query = {}) {
+  const target = new URL(url);
+  Object.entries(query).forEach(([key, value]) => appendQueryParam(target.searchParams, key, value));
+  return target.toString();
+}
+
+function batchBody(args) {
+  const body = pickDefined(args, ['create', 'update', 'delete']);
+  if (Object.keys(body).length === 0) {
+    throw new Error('At least one of create, update or delete (arrays) is required for batch actions.');
+  }
+  return body;
+}
+
+function ruleType(args) {
+  // Acepta target_rules / buy_rules (como en el body de promociones) además del formato de la URL.
+  const value = String(args.rule_type || '').replace(/_/g, '-');
+  if (!RULE_TYPES.includes(value)) {
+    throw new Error(`rule_type is required: one of ${RULE_TYPES.join(', ')}`);
+  }
+  return value;
+}
+
+async function updateCampaignPromotions(baseUrl, headers, args) {
+  if (!args.campaign_id) throw new Error('Campaign ID is required');
+  const body = pickDefined(args, ['add', 'remove']);
+  if (!Array.isArray(body.add) && !Array.isArray(body.remove)) {
+    throw new Error('add and/or remove (arrays of promotion IDs) are required');
+  }
+  return await makeRequest(`${baseUrl}/admin/campaigns/${encodeURIComponent(args.campaign_id)}/promotions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
+async function listPriceListPrices(baseUrl, headers, args) {
+  if (!args.id) throw new Error('Price list ID is required');
+  const url = withQuery(`${baseUrl}/admin/price-lists/${encodeURIComponent(args.id)}/prices`, {
+    limit: args.limit,
+    offset: args.offset,
+    fields: args.fields
+  });
+  return await makeRequest(url, { method: 'GET', headers });
+}
+
+async function batchPriceListPrices(baseUrl, headers, args) {
+  if (!args.id) throw new Error('Price list ID is required');
+  return await makeRequest(`${baseUrl}/admin/price-lists/${encodeURIComponent(args.id)}/prices/batch`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(batchBody(args))
+  });
+}
+
+async function removePriceListProducts(baseUrl, headers, args) {
+  if (!args.id) throw new Error('Price list ID is required');
+  if (!Array.isArray(args.remove) || args.remove.length === 0) {
+    throw new Error('remove (array of product IDs) is required');
+  }
+  return await makeRequest(`${baseUrl}/admin/price-lists/${encodeURIComponent(args.id)}/products`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ remove: args.remove })
+  });
+}
+
+async function listPromotionRules(baseUrl, headers, args) {
+  if (!args.promotion_id) throw new Error('Promotion ID is required');
+  const url = withQuery(`${baseUrl}/admin/promotions/${encodeURIComponent(args.promotion_id)}/${ruleType(args)}`, {
+    fields: args.fields
+  });
+  return await makeRequest(url, { method: 'GET', headers });
+}
+
+async function batchPromotionRules(baseUrl, headers, args) {
+  if (!args.promotion_id) throw new Error('Promotion ID is required');
+  // Las tres rutas .../{rule_type}/batch están declaradas en el header.
+  const path = [PROMOTIONS_PATH, encodeURIComponent(args.promotion_id), ruleType(args), 'batch'].join('/');
+  return await makeRequest(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(batchBody(args))
+  });
+}
+
+const RULE_OPTION_QUERY = ['promotion_type', 'application_method_type', 'application_method_target_type'];
+
+async function listRuleAttributeOptions(baseUrl, headers, args) {
+  const url = withQuery(`${baseUrl}/admin/promotions/rule-attribute-options/${ruleType(args)}`, {
+    ...pickDefined(args, RULE_OPTION_QUERY),
+    fields: args.fields
+  });
+  return await makeRequest(url, { method: 'GET', headers });
+}
+
+async function listRuleValueOptions(baseUrl, headers, args) {
+  if (!args.rule_attribute_id) throw new Error('rule_attribute_id is required (see list_rule_attribute_options)');
+  const url = withQuery(
+    `${baseUrl}/admin/promotions/rule-value-options/${ruleType(args)}/${encodeURIComponent(args.rule_attribute_id)}`,
+    {
+      q: args.q,
+      value: args.value,
+      limit: args.limit,
+      offset: args.offset,
+      application_method_target_type: args.application_method_target_type
+    }
+  );
+  return await makeRequest(url, { method: 'GET', headers });
+}
+
+async function pricePreferenceOperation(baseUrl, headers, args) {
+  const body = pickDefined(args, ['attribute', 'value', 'is_tax_inclusive']);
+  switch (args.action) {
+    case 'list_price_preferences': {
+      const url = withQuery(`${baseUrl}/admin/price-preferences`, {
+        limit: args.limit,
+        offset: args.offset,
+        q: args.q,
+        attribute: args.attribute,
+        value: args.value,
+        fields: args.fields
+      });
+      return await makeRequest(url, { method: 'GET', headers });
+    }
+    case 'create_price_preference':
+      if (!body.attribute || !body.value) throw new Error('attribute (currency_code or region_id) and value are required');
+      return await makeRequest(`${baseUrl}/admin/price-preferences`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      });
+    default: {
+      if (!args.price_preference_id) throw new Error('price_preference_id is required');
+      const url = `${baseUrl}/admin/price-preferences/${encodeURIComponent(args.price_preference_id)}`;
+      if (args.action === 'get_price_preference') {
+        return await makeRequest(withQuery(url, { fields: args.fields }), { method: 'GET', headers });
+      }
+      if (args.action === 'update_price_preference') {
+        return await makeRequest(url, { method: 'POST', headers, body: JSON.stringify(body) });
+      }
+      return await makeRequest(url, { method: 'DELETE', headers });
+    }
+  }
+}
+
+const ACTIONS = [
+  'list_price_lists', 'get_price_list', 'create_price_list', 'update_price_list', 'delete_price_list',
+  'list_price_list_prices', 'batch_price_list_prices', 'remove_price_list_products',
+  'list_promotions', 'get_promotion', 'create_promotion', 'update_promotion', 'delete_promotion',
+  'list_promotion_rules', 'batch_promotion_rules', 'list_rule_attribute_options', 'list_rule_value_options',
+  'list_campaigns', 'get_campaign', 'create_campaign', 'update_campaign', 'delete_campaign', 'update_campaign_promotions',
+  'list_price_preferences', 'get_price_preference', 'create_price_preference', 'update_price_preference', 'delete_price_preference'
+];
+
 export const apiTool = {
   definition: {
     name: 'manage_medusa_admin_pricing',
-    description: 'Comprehensive Medusa Admin pricing and promotions management tool supporting price lists, promotions, and campaigns (Medusa 2.17.2+, incl. 2.18 and 2.21.1). Promotion metadata on create_promotion/update_promotion requires Medusa >= 2.21 and is only sent when provided.',
+    description:
+      'Comprehensive Medusa Admin pricing and promotions management tool supporting price lists, promotions, and campaigns (Medusa 2.17.2+, incl. 2.18 and 2.21.1). Promotion metadata on create_promotion/update_promotion requires Medusa >= 2.21 and is only sent when provided. ' +
+      'Price list prices (id = price list): list_price_list_prices, batch_price_list_prices ({create: [{variant_id, currency_code, amount, min_quantity?, max_quantity?, rules?}], update: [{id, variant_id, ...}], delete: [price IDs]}), remove_price_list_products (remove: product IDs; drops their prices from the list). ' +
+      'Promotion rules (promotion_id + rule_type rules|target-rules|buy-rules): list_promotion_rules, batch_promotion_rules ({create: [{attribute, operator, values}], update: [{id, ...}], delete: [rule IDs]}); list_rule_attribute_options (rule_type) and list_rule_value_options (rule_type + rule_attribute_id) list valid attributes/values. ' +
+      'update_campaign_promotions (campaign_id + add/remove promotion IDs). ' +
+      'Price preferences (whether prices of a currency_code/region_id include tax): list/get/create/update/delete_price_preference (price_preference_id; attribute, value, is_tax_inclusive). ' +
+      'Price, promotion and tax-inclusiveness changes apply immediately to the storefront.',
     parameters: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: [
-            'list_price_lists', 'get_price_list', 'create_price_list', 'update_price_list', 'delete_price_list',
-            'list_promotions', 'get_promotion', 'create_promotion', 'update_promotion', 'delete_promotion',
-            'list_campaigns', 'get_campaign', 'create_campaign', 'update_campaign', 'delete_campaign'
-          ],
+          enum: ACTIONS,
           description: 'The action to perform.'
         },
+        price_preference_id: { type: 'string', description: 'Price preference ID (get/update/delete_price_preference).' },
+        attribute: { type: 'string', description: 'Price preference attribute: currency_code or region_id.' },
+        value: { type: 'string', description: 'Price preference value (e.g. "usd" or a region ID), or rule value filter for list_rule_value_options.' },
+        rule_type: { type: 'string', enum: ['rules', 'target-rules', 'buy-rules'], description: 'Promotion rule set (list/batch_promotion_rules, rule option actions).' },
+        rule_attribute_id: { type: 'string', description: 'Rule attribute ID for list_rule_value_options (e.g. customer_group, product).' },
+        promotion_type: { type: 'string', description: 'Filter for list_rule_attribute_options (standard, buyget).' },
+        application_method_type: { type: 'string', description: 'Filter for list_rule_attribute_options (fixed, percentage).' },
+        application_method_target_type: { type: 'string', description: 'Filter for rule option actions (items, shipping_methods, order).' },
+        create: { type: 'array', items: { type: 'object' }, description: 'batch actions: records to create.' },
+        update: { type: 'array', items: { type: 'object' }, description: 'batch actions: records to update (each with id).' },
+        delete: { type: 'array', items: { type: 'string' }, description: 'batch actions: IDs to delete.' },
+        add: { type: 'array', items: { type: 'string' }, description: 'update_campaign_promotions: promotion IDs to add.' },
+        remove: { type: 'array', items: { type: 'string' }, description: 'update_campaign_promotions: promotion IDs to remove; remove_price_list_products: product IDs.' },
+        fields: { type: 'string', description: 'Fields selector for the new list/get actions.' },
         id: { type: 'string', description: 'Price list ID.' },
         promotion_id: { type: 'string', description: 'Promotion ID.' },
         campaign_id: { type: 'string', description: 'Campaign ID.' },

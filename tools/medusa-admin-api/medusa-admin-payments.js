@@ -10,7 +10,8 @@
  *   GET    /admin/payments, GET /admin/payments/{id}
  *   POST   /admin/payments/{id}/capture, POST /admin/payments/{id}/refund
  *   GET    /admin/payments/payment-providers
- *   GET    /admin/refund-reasons
+ *   GET|POST /admin/refund-reasons                                  listar / crear { label, code, description? }
+ *   GET|POST|DELETE /admin/refund-reasons/{id}
  * No existen GET /admin/payment-collections[/{id}], POST /admin/payment-collections/{id},
  * POST /admin/payments/{id}/cancel ni /admin/refunds: las colecciones se leen desde la
  * orden y los reembolsos desde el pago.
@@ -100,6 +101,11 @@ async function handlePaymentsOperation(args) {
       return await listPaymentProviders(baseUrl, headers, args);
     case 'list_refund_reasons':
       return await listRefundReasons(baseUrl, headers, args);
+    case 'get_refund_reason':
+    case 'create_refund_reason':
+    case 'update_refund_reason':
+    case 'delete_refund_reason':
+      return await refundReasonOperation(baseUrl, headers, args);
     default:
       throw new Error(`Unknown action: ${args.action}`);
   }
@@ -318,11 +324,38 @@ async function listRefundReasons(baseUrl, headers, args) {
   return await makeRequest(url, { headers });
 }
 
+/** Refund reasons CRUD. Medusa valida con .strict(): sólo label, code, description. */
+async function refundReasonOperation(baseUrl, headers, args) {
+  const body = {};
+  for (const key of ['label', 'code', 'description']) {
+    if (args[key] !== undefined) body[key] = args[key];
+  }
+  if (args.action === 'create_refund_reason') {
+    if (!body.label || !body.code) throw new Error('label and code are required for create_refund_reason');
+    return await makeRequest(`${baseUrl}/admin/refund-reasons`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    });
+  }
+
+  if (!args.refund_reason_id) throw new Error('refund_reason_id is required');
+  const url = `${baseUrl}/admin/refund-reasons/${encodeURIComponent(args.refund_reason_id)}`;
+  if (args.action === 'get_refund_reason') {
+    return await makeRequest(buildUrl(url, '', { fields: args.fields }), { method: 'GET', headers });
+  }
+  if (args.action === 'update_refund_reason') {
+    return await makeRequest(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  }
+  return await makeRequest(url, { method: 'DELETE', headers });
+}
+
 const ACTIONS = [
   'list_payment_collections', 'get_payment_collection', 'create_payment_collection', 'mark_payment_collection_as_paid',
   'create_payment_session', 'delete_payment_collection',
   'list_payments', 'get_payment', 'capture_payment', 'refund_payment',
-  'list_refunds', 'get_refund', 'list_payment_providers', 'list_refund_reasons'
+  'list_refunds', 'get_refund', 'list_payment_providers',
+  'list_refund_reasons', 'get_refund_reason', 'create_refund_reason', 'update_refund_reason', 'delete_refund_reason'
 ];
 
 export const apiTool = {
@@ -333,6 +366,7 @@ export const apiTool = {
       'create_payment_collection (order_id + amount, for an outstanding balance), mark_payment_collection_as_paid (id + order_id, records a manual payment), create_payment_session (id + provider_id), delete_payment_collection. ' +
       'list_payments / get_payment, capture_payment (payment_id, optional amount > 0; omit amount to capture the full authorized amount), refund_payment (payment_id + amount > 0, optional refund_reason_id and note; money is returned to the customer through the provider). ' +
       'list_refunds / get_refund read refunds from a payment_id or order_id. list_payment_providers and list_refund_reasons help pick provider_id / refund_reason_id. ' +
+      'Refund reasons catalog: get_refund_reason, create_refund_reason (label + code, optional description), update_refund_reason, delete_refund_reason (refund_reason_id). ' +
       'Removed (no such routes in Medusa v2): update_payment_collection, cancel_payment (cancel the order instead).',
     parameters: {
       type: 'object',
@@ -359,7 +393,10 @@ export const apiTool = {
         created_at: { type: 'object', description: 'Date filter for list_payments with operators ($gte/$lte/$gt/$lt).' },
         updated_at: { type: 'object', description: 'Date filter for list_payments with operators ($gte/$lte/$gt/$lt).' },
         amount: { type: 'number', description: 'Amount: must be > 0 for capture_payment/refund_payment (required for refund_payment); required for create_payment_collection.' },
-        refund_reason_id: { type: 'string', description: 'Refund reason ID for refund_payment (see list_refund_reasons).' },
+        refund_reason_id: { type: 'string', description: 'Refund reason ID for refund_payment (see list_refund_reasons) and get/update/delete_refund_reason.' },
+        label: { type: 'string', description: 'Refund reason label (create/update_refund_reason).' },
+        code: { type: 'string', description: 'Refund reason code (create/update_refund_reason).' },
+        description: { type: 'string', description: 'Refund reason description (create/update_refund_reason).' },
         reason: { type: 'string', description: 'Deprecated: free-text refund reason. A refund reason ID (refr_...) is sent as refund_reason_id; any other text is appended to note.' },
         note: { type: 'string', description: 'Refund note.' }
       },

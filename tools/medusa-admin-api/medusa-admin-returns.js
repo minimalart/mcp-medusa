@@ -8,7 +8,7 @@
  *   POST   /admin/order-edits                                   abrir edición { order_id, ... }
  *   POST   /admin/order-edits/{order_id}/items                  agregar ítems
  *   POST   /admin/order-edits/{order_id}/items/item/{item_id}   cambiar cantidad de un ítem existente
- *   POST|DELETE /admin/order-edits/{order_id}/items/{action_id} editar/quitar ítem agregado en la edición
+ *   POST|DELETE /admin/order-edits/{order_id}/items/{action_id}  editar/quitar ítem agregado en la edición
  *   POST   /admin/order-edits/{order_id}/shipping-method        agregar método de envío
  *   POST|DELETE /admin/order-edits/{order_id}/shipping-method/{action_id}
  *   POST   /admin/order-edits/{order_id}/request                pedir confirmación (no_notification: 2.19+)
@@ -16,6 +16,46 @@
  *   DELETE /admin/order-edits/{order_id}                        cancelar la edición activa
  * No existen GET /admin/order-edits, GET|POST /admin/order-edits/{id},
  * /complete ni /cancel: los cambios se listan con GET /admin/orders/{id}/changes.
+ *
+ * Claims, exchanges y returns también son order changes que se arman paso a paso y
+ * se confirman con /request. Rutas (todas presentes desde 2.17.2, incluida 2.18.0,
+ * hasta 2.21.2):
+ *   GET|POST /admin/claims                                           listar / crear { type: refund|replace, order_id }
+ *   POST   /admin/claims/{id}/claim-items                            ítems reclamados [{ id, quantity, reason? }]
+ *   POST|DELETE /admin/claims/{id}/claim-items/{action_id}
+ *   POST   /admin/claims/{id}/inbound/items                          ítems que vuelven [{ id, quantity }]
+ *   POST|DELETE /admin/claims/{id}/inbound/items/{action_id}
+ *   POST   /admin/claims/{id}/inbound/shipping-method
+ *   POST|DELETE /admin/claims/{id}/inbound/shipping-method/{action_id}
+ *   POST   /admin/claims/{id}/outbound/items                         ítems nuevos [{ variant_id, quantity }]
+ *   POST|DELETE /admin/claims/{id}/outbound/items/{action_id}
+ *   POST   /admin/claims/{id}/outbound/shipping-method
+ *   POST|DELETE /admin/claims/{id}/outbound/shipping-method/{action_id}
+ *   POST   /admin/claims/{id}/request                                confirmar (aplica; puede notificar al cliente)
+ *   DELETE /admin/claims/{id}/request                                descartar el claim pedido
+ *   GET|POST /admin/exchanges                                        listar / crear { order_id }
+ *   POST   /admin/exchanges/{id}/inbound/items
+ *   POST|DELETE /admin/exchanges/{id}/inbound/items/{action_id}
+ *   POST   /admin/exchanges/{id}/inbound/shipping-method
+ *   POST|DELETE /admin/exchanges/{id}/inbound/shipping-method/{action_id}
+ *   POST   /admin/exchanges/{id}/outbound/items
+ *   POST|DELETE /admin/exchanges/{id}/outbound/items/{action_id}
+ *   POST   /admin/exchanges/{id}/outbound/shipping-method
+ *   POST|DELETE /admin/exchanges/{id}/outbound/shipping-method/{action_id}
+ *   POST|DELETE /admin/exchanges/{id}/request
+ *   GET|POST /admin/returns                                          listar / crear { order_id, location_id? }
+ *   GET|POST /admin/returns/{id}                                     leer / actualizar { location_id, no_notification, metadata }
+ *   POST   /admin/returns/{id}/request-items
+ *   POST|DELETE /admin/returns/{id}/request-items/{action_id}
+ *   POST   /admin/returns/{id}/shipping-method
+ *   POST|DELETE /admin/returns/{id}/shipping-method/{action_id}
+ *   POST|DELETE /admin/returns/{id}/request
+ *   POST|DELETE /admin/returns/{id}/receive-items/{action_id}
+ *   POST   /admin/returns/{id}/dismiss-items                         ítems recibidos dañados (no reponen stock)
+ *   POST|DELETE /admin/returns/{id}/dismiss-items/{action_id}
+ *   POST   /admin/order-changes/{id}                                 { carry_over_promotions, internal_note }
+ *   GET|POST /admin/return-reasons
+ *   GET|POST|DELETE /admin/return-reasons/{id}
  */
 
 import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
@@ -24,8 +64,8 @@ import { withMedusaErrorHints } from "../../lib/medusa-version.js";
 const REMOVED_ACTIONS = {
   update_claim:
     'update_claim was removed: Medusa v2 has no POST /admin/claims/{id} route. Claims are edited through their order change: ' +
-    'POST /admin/claims/{id}/claim-items, /inbound/items, /outbound/items, /inbound/shipping-method, /outbound/shipping-method, ' +
-    'then POST /admin/claims/{id}/request (or DELETE to discard). Use manage_medusa_admin_v2 action=request for those routes.',
+    'claim_add_items, claim_add_inbound_items, claim_add_outbound_items, claim_add_inbound_shipping_method, claim_add_outbound_shipping_method ' +
+    '(and their claim_update_* / claim_remove_* variants), then confirm_claim_request (or cancel_claim_request to discard).',
   update_order_edit:
     'update_order_edit was removed: Medusa v2 has no route to update an order edit. Use the order edit item/shipping actions ' +
     '(order_edit_add_items, order_edit_update_item, ...) on the active edit, or cancel_order_edit and create_order_edit again.'
@@ -89,7 +129,26 @@ async function handleReturnsOperation(args) {
     case 'cancel_order_edit':
     case 'delete_order_edit':
       return await cancelOrderEdit(baseUrl, headers, args);
+    case 'create_claim':
+    case 'create_exchange':
+    case 'create_return':
+      return await createOrderFlow(baseUrl, headers, args);
+    case 'update_order_change':
+      return await updateOrderChange(baseUrl, headers, args);
+    case 'list_return_reasons':
+      return await listReturnReasons(baseUrl, headers, args);
+    case 'get_return_reason':
+      return await getReturnReason(baseUrl, headers, args);
+    case 'create_return_reason':
+      return await createReturnReason(baseUrl, headers, args);
+    case 'update_return_reason':
+      return await updateReturnReason(baseUrl, headers, args);
+    case 'delete_return_reason':
+      return await deleteReturnReason(baseUrl, headers, args);
     default:
+      if (FLOW_STEPS[args.action]) {
+        return await runFlowStep(baseUrl, headers, args);
+      }
       throw new Error(`Unknown action: ${args.action}`);
   }
 }
@@ -356,6 +415,188 @@ async function cancelOrderEdit(baseUrl, headers, args) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Claims, exchanges y returns: crear + pasos del order change (rutas en el header)
+// ---------------------------------------------------------------------------
+
+const FLOWS = {
+  claim: { base: '/admin/claims', idArg: 'claim_id', label: 'Claim' },
+  exchange: { base: '/admin/exchanges', idArg: 'exchange_id', label: 'Exchange' },
+  return: { base: '/admin/returns', idArg: 'id', label: 'Return' }
+};
+
+const CREATE_FLOW = {
+  create_claim: { flow: 'claim', required: ['type', 'order_id'], fields: ['type', 'order_id', 'description', 'internal_note', 'reason_id', 'metadata'] },
+  create_exchange: { flow: 'exchange', required: ['order_id'], fields: ['order_id', 'description', 'internal_note', 'metadata'] },
+  create_return: { flow: 'return', required: ['order_id'], fields: ['order_id', 'location_id', 'description', 'internal_note', 'no_notification', 'metadata'] }
+};
+
+// Medusa valida estos bodies con zod estricto: cada paso manda sólo sus campos.
+const ITEM_ACTION_FIELDS = ['quantity', 'internal_note', 'reason_id', 'metadata'];
+const QUANTITY_ACTION_FIELDS = ['quantity', 'internal_note'];
+const SHIPPING_FIELDS = ['shipping_option_id', 'custom_amount', 'description', 'internal_note', 'metadata'];
+const SHIPPING_ACTION_FIELDS = ['custom_amount', 'internal_note', 'metadata'];
+
+/**
+ * Pasos de claims/exchanges. Cada paso: flow, suffix bajo /admin/{flow}/{id}, method y
+ *   items: true    → body { items, ...extra } (items requerido)
+ *   actionId: true → suffix + /{action_id} (action_id requerido)
+ *   fields         → campos opcionales del body; required → obligatorios
+ */
+function inboundOutboundSteps(flow, { withClaimItems = false, outboundItemFields }) {
+  const steps = {};
+  if (withClaimItems) {
+    steps[`${flow}_add_items`] = { flow, suffix: '/claim-items', method: 'POST', items: true };
+    steps[`${flow}_update_item`] = { flow, suffix: '/claim-items', method: 'POST', actionId: true, fields: ITEM_ACTION_FIELDS };
+    steps[`${flow}_remove_item`] = { flow, suffix: '/claim-items', method: 'DELETE', actionId: true };
+  }
+  for (const direction of ['inbound', 'outbound']) {
+    steps[`${flow}_add_${direction}_items`] = {
+      flow, suffix: `/${direction}/items`, method: 'POST', items: true, extra: direction === 'inbound' ? ['location_id'] : []
+    };
+    steps[`${flow}_update_${direction}_item`] = {
+      flow, suffix: `/${direction}/items`, method: 'POST', actionId: true,
+      fields: direction === 'outbound' ? outboundItemFields : ITEM_ACTION_FIELDS
+    };
+    steps[`${flow}_remove_${direction}_item`] = { flow, suffix: `/${direction}/items`, method: 'DELETE', actionId: true };
+    steps[`${flow}_add_${direction}_shipping_method`] = {
+      flow, suffix: `/${direction}/shipping-method`, method: 'POST', fields: SHIPPING_FIELDS, required: ['shipping_option_id']
+    };
+    steps[`${flow}_update_${direction}_shipping_method`] = {
+      flow, suffix: `/${direction}/shipping-method`, method: 'POST', actionId: true, fields: SHIPPING_ACTION_FIELDS
+    };
+    steps[`${flow}_remove_${direction}_shipping_method`] = {
+      flow, suffix: `/${direction}/shipping-method`, method: 'DELETE', actionId: true
+    };
+  }
+  steps[`confirm_${flow}_request`] = { flow, suffix: '/request', method: 'POST', fields: ['no_notification'] };
+  steps[`cancel_${flow}_request`] = { flow, suffix: '/request', method: 'DELETE' };
+  return steps;
+}
+
+const FLOW_STEPS = {
+  ...inboundOutboundSteps('claim', { withClaimItems: true, outboundItemFields: ITEM_ACTION_FIELDS }),
+  ...inboundOutboundSteps('exchange', { outboundItemFields: QUANTITY_ACTION_FIELDS }),
+  update_return: { flow: 'return', suffix: '', method: 'POST', fields: ['location_id', 'no_notification', 'metadata'] },
+  return_request_items: { flow: 'return', suffix: '/request-items', method: 'POST', items: true },
+  return_update_request_item: { flow: 'return', suffix: '/request-items', method: 'POST', actionId: true, fields: ITEM_ACTION_FIELDS },
+  return_remove_request_item: { flow: 'return', suffix: '/request-items', method: 'DELETE', actionId: true },
+  return_add_shipping_method: { flow: 'return', suffix: '/shipping-method', method: 'POST', fields: SHIPPING_FIELDS, required: ['shipping_option_id'] },
+  return_update_shipping_method: { flow: 'return', suffix: '/shipping-method', method: 'POST', actionId: true, fields: SHIPPING_ACTION_FIELDS },
+  return_remove_shipping_method: { flow: 'return', suffix: '/shipping-method', method: 'DELETE', actionId: true },
+  confirm_return_request: { flow: 'return', suffix: '/request', method: 'POST', fields: ['no_notification'] },
+  cancel_return_request: { flow: 'return', suffix: '/request', method: 'DELETE' },
+  return_update_received_item: { flow: 'return', suffix: '/receive-items', method: 'POST', actionId: true, fields: QUANTITY_ACTION_FIELDS },
+  return_remove_received_item: { flow: 'return', suffix: '/receive-items', method: 'DELETE', actionId: true },
+  return_dismiss_items: { flow: 'return', suffix: '/dismiss-items', method: 'POST', items: true },
+  return_update_dismissed_item: { flow: 'return', suffix: '/dismiss-items', method: 'POST', actionId: true, fields: QUANTITY_ACTION_FIELDS },
+  return_remove_dismissed_item: { flow: 'return', suffix: '/dismiss-items', method: 'DELETE', actionId: true }
+};
+
+function flowRequest(step, args) {
+  const flow = FLOWS[step.flow];
+  const flowId = args[flow.idArg];
+  if (!flowId) throw new Error(`${flow.label} ID is required (${flow.idArg}).`);
+
+  let suffix = step.suffix;
+  if (step.actionId) {
+    if (!args.action_id) throw new Error('action_id is required (the order change action ID, see get_* or the order preview).');
+    suffix += `/${encodeURIComponent(args.action_id)}`;
+  }
+
+  let body;
+  if (step.method !== 'DELETE') {
+    if (step.items) {
+      if (!Array.isArray(args.items) || args.items.length === 0) {
+        throw new Error('items (non-empty array) is required for this action.');
+      }
+      body = { items: args.items, ...pickDefined(args, step.extra || []) };
+    } else {
+      body = pickDefined(args, step.fields || []);
+    }
+    const missing = (step.required || []).filter((key) => body[key] === undefined);
+    if (missing.length > 0) throw new Error(`${missing.join(', ')} is required for this action.`);
+  }
+
+  return { path: `${flow.base}/${encodeURIComponent(flowId)}${suffix}`, method: step.method, body };
+}
+
+async function runFlowStep(baseUrl, headers, args) {
+  const { path, method, body } = flowRequest(FLOW_STEPS[args.action], args);
+  const request = { method, headers };
+  if (body !== undefined) request.body = JSON.stringify(body);
+  return await makeRequest(`${baseUrl}${path}`, request);
+}
+
+async function createOrderFlow(baseUrl, headers, args) {
+  const config = CREATE_FLOW[args.action];
+  const body = pickDefined(args, config.fields);
+  const missing = config.required.filter((key) => body[key] === undefined);
+  if (missing.length > 0) throw new Error(`${missing.join(', ')} is required for ${args.action}.`);
+  return await makeRequest(`${baseUrl}${FLOWS[config.flow].base}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
+async function updateOrderChange(baseUrl, headers, args) {
+  if (!args.order_change_id) throw new Error('order_change_id is required');
+  return await makeRequest(`${baseUrl}/admin/order-changes/${encodeURIComponent(args.order_change_id)}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(pickDefined(args, ['carry_over_promotions', 'internal_note']))
+  });
+}
+
+// Return reasons
+async function listReturnReasons(baseUrl, headers, args) {
+  const url = new URL(`${baseUrl}/admin/return-reasons`);
+  for (const key of ['limit', 'offset', 'q', 'fields']) appendQueryParam(url.searchParams, key, args[key]);
+  return await makeRequest(url.toString(), { headers });
+}
+
+async function getReturnReason(baseUrl, headers, args) {
+  if (!args.return_reason_id) throw new Error('return_reason_id is required');
+  const url = new URL(`${baseUrl}/admin/return-reasons/${encodeURIComponent(args.return_reason_id)}`);
+  appendQueryParam(url.searchParams, 'fields', args.fields);
+  return await makeRequest(url.toString(), { headers });
+}
+
+async function createReturnReason(baseUrl, headers, args) {
+  if (!args.value || !args.label) throw new Error('value and label are required for create_return_reason');
+  return await makeRequest(`${baseUrl}/admin/return-reasons`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(pickDefined(args, ['value', 'label', 'description', 'parent_return_reason_id', 'metadata']))
+  });
+}
+
+async function updateReturnReason(baseUrl, headers, args) {
+  if (!args.return_reason_id) throw new Error('return_reason_id is required');
+  const body = pickDefined(args, ['value', 'label', 'description', 'metadata']);
+  // Medusa exige value y label en el update: si falta alguno se completa con el valor actual.
+  if (body.value === undefined || body.label === undefined) {
+    const current = await getReturnReason(baseUrl, headers, { return_reason_id: args.return_reason_id });
+    const reason = current?.return_reason || {};
+    if (body.value === undefined) body.value = reason.value;
+    if (body.label === undefined) body.label = reason.label;
+  }
+  return await makeRequest(`${baseUrl}/admin/return-reasons/${encodeURIComponent(args.return_reason_id)}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
+}
+
+async function deleteReturnReason(baseUrl, headers, args) {
+  if (!args.return_reason_id) throw new Error('return_reason_id is required');
+  return await makeRequest(`${baseUrl}/admin/return-reasons/${encodeURIComponent(args.return_reason_id)}`, {
+    method: 'DELETE',
+    headers
+  });
+}
+
 const ACTIONS = [
   'list_returns', 'get_return', 'cancel_return', 'receive_return',
   'list_exchanges', 'get_exchange', 'cancel_exchange',
@@ -363,7 +604,11 @@ const ACTIONS = [
   'list_order_edits', 'get_order_edit', 'create_order_edit',
   'order_edit_add_items', 'order_edit_update_item', 'order_edit_update_added_item', 'order_edit_remove_added_item',
   'order_edit_add_shipping_method', 'order_edit_update_shipping_method', 'order_edit_remove_shipping_method',
-  'request_order_edit', 'confirm_order_edit', 'complete_order_edit', 'cancel_order_edit', 'delete_order_edit'
+  'request_order_edit', 'confirm_order_edit', 'complete_order_edit', 'cancel_order_edit', 'delete_order_edit',
+  ...Object.keys(CREATE_FLOW),
+  ...Object.keys(FLOW_STEPS),
+  'update_order_change',
+  'list_return_reasons', 'get_return_reason', 'create_return_reason', 'update_return_reason', 'delete_return_reason'
 ];
 
 export const apiTool = {
@@ -374,6 +619,11 @@ export const apiTool = {
       'receive_return: without items only opens the receipt (previous behavior); with items [{id, quantity}] it opens, receives and confirms in one call (restocks inventory; customer may be notified unless no_notification). ' +
       'Order edits are addressed by order_id: create_order_edit → order_edit_add_items / order_edit_update_item (quantity 0 removes) / order_edit_*_added_item / order_edit_*_shipping_method → request_order_edit (asks the customer to confirm and may email them; no_notification needs Medusa >= 2.19, ignored on 2.18) → confirm_order_edit (alias complete_order_edit, applies the changes) or cancel_order_edit (alias delete_order_edit). ' +
       'list_order_edits returns the order changes of type edit; get_order_edit returns the order preview with pending changes. ' +
+      'Claims (claim_id), exchanges (exchange_id) and returns (id) are order changes built step by step: create_claim (type refund|replace + order_id) / create_exchange / create_return (order_id) → ' +
+      'claim_add_items (claimed order items [{id, quantity, reason?}]), *_add_inbound_items (items coming back [{id, quantity, reason_id?}], optional location_id), *_add_outbound_items (new items [{variant_id, quantity}]), *_add_inbound_shipping_method / *_add_outbound_shipping_method (shipping_option_id); ' +
+      'each has *_update_* / *_remove_* variants addressed by action_id. Returns: return_request_items, return_*_request_item, return_*_shipping_method, update_return, return_dismiss_items (damaged items, no restock) and return_*_received_item / return_*_dismissed_item. ' +
+      'confirm_claim_request / confirm_exchange_request / confirm_return_request APPLY the change (creates the return/outbound order items, may email the customer unless no_notification); cancel_*_request discards it. cancel_claim / cancel_exchange / cancel_return cancel an existing one. ' +
+      'update_order_change (order_change_id: carry_over_promotions, internal_note). Return reasons: list/get/create/update/delete_return_reason (return_reason_id; value + label). ' +
       'Removed (no such routes in Medusa v2): update_claim, update_order_edit.',
     parameters: {
       type: 'object',
@@ -383,13 +633,23 @@ export const apiTool = {
           enum: ACTIONS,
           description: 'The action to perform.'
         },
-        id: { type: 'string', description: 'Return ID.' },
-        exchange_id: { type: 'string', description: 'Exchange ID.' },
-        claim_id: { type: 'string', description: 'Claim ID.' },
-        order_id: { type: 'string', description: 'Order ID. Filter for list_returns/list_exchanges/list_claims; required for every order edit action.' },
+        id: { type: 'string', description: 'Return ID (return actions).' },
+        exchange_id: { type: 'string', description: 'Exchange ID (exchange actions).' },
+        claim_id: { type: 'string', description: 'Claim ID (claim actions).' },
+        order_id: { type: 'string', description: 'Order ID. Filter for list_returns/list_exchanges/list_claims; required for create_claim/create_exchange/create_return and every order edit action.' },
+        order_change_id: { type: 'string', description: 'Order change ID (update_order_change).' },
+        carry_over_promotions: { type: 'boolean', description: 'update_order_change: keep the order promotions on the change.' },
+        type: { type: 'string', enum: ['refund', 'replace'], description: 'create_claim: refund (money back) or replace (send new items).' },
+        reason_id: { type: 'string', description: 'Return reason ID (create_claim, item update actions).' },
+        location_id: { type: 'string', description: 'Stock location receiving the items (create_return, update_return, *_add_inbound_items).' },
+        return_reason_id: { type: 'string', description: 'Return reason ID (get/update/delete_return_reason).' },
+        value: { type: 'string', description: 'Return reason code value (create/update_return_reason).' },
+        label: { type: 'string', description: 'Return reason label (create/update_return_reason).' },
+        parent_return_reason_id: { type: 'string', description: 'Parent return reason (create_return_reason).' },
+        q: { type: 'string', description: 'Search text (list_return_reasons).' },
         order_edit_id: { type: 'string', description: 'Deprecated: order edits are addressed by order_id in Medusa v2 (an order_... ID passed here is accepted).' },
         item_id: { type: 'string', description: 'Existing order line item ID (order_edit_update_item).' },
-        action_id: { type: 'string', description: 'Order change action ID of an item or shipping method added in the active edit.' },
+        action_id: { type: 'string', description: 'Order change action ID of an item or shipping method added in the active edit / claim / exchange / return (for *_update_* and *_remove_* actions).' },
         variant_id: { type: 'string', description: 'Variant ID for order_edit_add_items (single item shortcut).' },
         quantity: { type: 'number', description: 'Quantity for order edit item actions.' },
         unit_price: { type: 'number', description: 'Custom unit price for order edit item actions.' },
@@ -402,9 +662,9 @@ export const apiTool = {
         fields: { type: 'string', description: 'Fields selector for list_order_edits/get_order_edit.' },
         limit: { type: 'number', description: 'Maximum number of items to return.' },
         offset: { type: 'number', description: 'Number of items to skip.' },
-        items: { type: 'array', items: { type: 'object' }, description: 'receive_return: [{ id: return item id, quantity }]. order_edit_add_items: [{ variant_id, quantity, unit_price? }].' },
+        items: { type: 'array', items: { type: 'object' }, description: 'receive_return / return_dismiss_items: [{ id: return item id, quantity }]. order_edit_add_items / *_add_outbound_items: [{ variant_id, quantity, unit_price? }]. claim_add_items / *_add_inbound_items / return_request_items: [{ id: order line item id, quantity, reason_id?, note fields }].' },
         refund: { type: 'number', description: 'Deprecated/unsupported: refunds are made with manage_medusa_admin_payments refund_payment.' },
-        no_notification: { type: 'boolean', description: 'Skip customer notifications (receive_return confirm; request_order_edit on Medusa >= 2.19).' },
+        no_notification: { type: 'boolean', description: 'Skip customer notifications (receive_return confirm, confirm_*_request, create_return/update_return; request_order_edit on Medusa >= 2.19).' },
         internal_note: { type: 'string', description: 'Internal note (create_order_edit, receive_return, item/shipping edits).' },
         metadata: { type: 'object', description: 'Additional metadata.' }
       },
