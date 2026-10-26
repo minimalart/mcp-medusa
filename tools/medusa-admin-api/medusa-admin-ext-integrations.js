@@ -1,7 +1,7 @@
 /**
  * INTEGRACIONES del boilerplate: ERP, Typesense (búsqueda y orden de productos por
- * tienda), GA4, Clarity, Google Merchant, catálogo de Meta, newsletter y
- * MercadoLibre (plugin marketplaces).
+ * tienda), GA4, Clarity, Google Merchant, catálogo de Meta, newsletter, cuentas de
+ * cobro de cada tienda (Configuración → Integraciones) y MercadoLibre.
  *
  * Declarativa: ver `lib/extension-resources.js`.
  */
@@ -17,6 +17,35 @@ const typesenseRule = (path, summary) => ({
     update: { method: 'PUT', path: '/{id}' },
   },
 });
+
+/**
+ * Cuentas de cobro de cada tienda (Configuración → Integraciones): rutas propias de
+ * cada proveedor que NUNCA devuelven un token, sólo estado y credenciales enmascaradas
+ * (últimos 4). El genérico `/admin/site-credentials` sigue fuera del MCP. Quién las ve
+ * o cambia lo decide el rol (recurso RBAC `site_credentials` en el boilerplate).
+ */
+const PAYMENT_PROVIDERS = {
+  mercadopago: ['Mercado Pago', '{access_token?, public_key?, webhook_secret?, inherit_global?}'],
+  mobbex: ['Mobbex', '{api_key?, access_token?, test_mode?, inherit_global?}'],
+  modo: ['MODO', '{username?, password?, processor_code?, merchant_name?, establishment_numbers?, inherit_global?}'],
+};
+const paymentAccountActions = () =>
+  Object.fromEntries(
+    Object.entries(PAYMENT_PROVIDERS).flatMap(([provider, [label, body]]) => {
+      const path = `/admin/${provider}/site-account`;
+      return [
+        [`get_${provider}`, { method: 'GET', path, note: `Estado de la cuenta de ${label} (sin site_id: la global).` }],
+        [
+          `update_${provider}`,
+          { method: 'POST', path, impact: 'high', note: `Conecta o reemplaza la cuenta de ${label} de la tienda (site_id obligatorio): body ${body}.` },
+        ],
+        [
+          `disconnect_${provider}`,
+          { method: 'DELETE', path, impact: 'high', note: `Desconecta la cuenta propia de ${label}: la tienda vuelve a heredar la global si la herencia está prendida.` },
+        ],
+      ];
+    }),
+  );
 
 export const RESOURCES = {
   // ─── ERP ────────────────────────────────────────────────────────────────────
@@ -227,6 +256,16 @@ export const RESOURCES = {
     subActions: { retry: { method: 'POST', path: '/{id}/retry', note: 'Reintenta la sync con el proveedor.' } },
   },
 
+  // ─── Cuentas de cobro por tienda (Configuración → Integraciones) ─────────────
+  payment_accounts: {
+    path: '/admin/site-credentials',
+    ops: [],
+    summary: 'Cuentas de cobro de la tienda: estado y credenciales enmascaradas, nunca tokens',
+    notes:
+      'Escribir exige site_id (una tienda concreta). Las credenciales viajan por la conversación: si el usuario prefiere, que las cargue en el backoffice.',
+    subActions: paymentAccountActions(),
+  },
+
   // ─── MercadoLibre (plugin marketplaces) ─────────────────────────────────────
   ml_settings: {
     path: '/admin/marketplaces/settings',
@@ -349,6 +388,7 @@ const GROUPS = [
     title: 'Analítica y marketing',
     resources: ['ga4_config', 'ga4_mappings', 'ga4_builtins', 'clarity', 'google_merchant', 'meta_catalog', 'newsletter_subscriptions'],
   },
+  { title: 'Cuentas de cobro por tienda', resources: ['payment_accounts'] },
   {
     title: 'MercadoLibre',
     resources: ['ml_settings', 'marketplaces', 'ml_accounts', 'ml_offers', 'ml_templates', 'ml_proposals', 'ml_jobs', 'ml_movements'],
@@ -358,7 +398,7 @@ const GROUPS = [
 const tool = createExtensionTool({
   name: 'manage_minimalart_integrations',
   intro:
-    'INTEGRACIONES del backoffice: ERP, buscador Typesense (incl. orden de productos por tienda), GA4, Clarity, Google Merchant, catálogo de Meta, newsletter y MercadoLibre. WhatsApp: manage_minimalart_whatsapp.',
+    'INTEGRACIONES del backoffice: ERP, buscador Typesense (incl. orden de productos por tienda), GA4, Clarity, Google Merchant, catálogo de Meta, newsletter, cuentas de cobro por tienda y MercadoLibre. WhatsApp: manage_minimalart_whatsapp.',
   resources: RESOURCES,
   groups: GROUPS,
 });

@@ -64,7 +64,6 @@ const MOVED_TO = {
     "blog_categories",
     "blog_posts",
     "blog_settings",
-    "email_templates",
     "landing_pages",
     "media_library",
     "videos",

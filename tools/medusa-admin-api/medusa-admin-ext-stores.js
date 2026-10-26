@@ -58,6 +58,61 @@ export const RESOURCES = {
       },
     },
   },
+  // Páginas y header/footer: se editan desde Tiendas → editar tienda.
+  site_pages: {
+    path: '/admin/sites',
+    ops: [],
+    summary: 'Páginas institucionales de una tienda (id = site_id, child_id = page_id)',
+    notes:
+      'create_page body {title, slug?, draft?, seo?} (sin slug se genera del título; nace en borrador). update_page edita título, slug, borrador o SEO: en una publicada sólo cambia el borrador hasta republicar; cambiar el slug de una publicada deja un redirect. get_page devuelve también dónde está enlazada (menú/footer).',
+    children: {
+      pages: { path: '/{id}/pages', ops: ['list', 'get', 'create', 'update'] },
+    },
+    subActions: {
+      set_page_status: {
+        method: 'POST',
+        path: '/{id}/pages/{child_id}/status',
+        impact: 'high',
+        requires: ['body.action'],
+        note: 'body {action: publish|unpublish|archive|restore}: cambia lo que ve el público. La respuesta trae dónde estaba enlazada.',
+      },
+    },
+  },
+  site_chrome: {
+    path: '/admin/sites',
+    ops: [],
+    summary: 'Header y footer de una tienda: borrador, preview y publicación (id = site_id)',
+    notes:
+      'Flujo: save_draft → (preview) → publish. El borrador nunca cambia el sitio público. base_revision = chrome_revision actual del sitio (409 si es vieja). Lo publicado se ve en la tienda en ≤60 s.',
+    subActions: {
+      save_draft: {
+        method: 'POST',
+        path: '/{id}/chrome-draft',
+        requires: ['body.part', 'body.draft', 'body.base_revision'],
+        note: 'body {part: header|footer, draft: {...}, base_revision}.',
+      },
+      discard_draft: {
+        method: 'DELETE',
+        path: '/{id}/chrome-draft',
+        requires: ['query.part'],
+        note: 'query {part: header|footer}.',
+      },
+      get_preview: { method: 'GET', path: '/{id}/chrome-preview' },
+      preview: {
+        method: 'POST',
+        path: '/{id}/chrome-preview',
+        mutating: false,
+        note: 'Preview con un override sin guardar: devuelve un token corto para el iframe del admin (no publica).',
+      },
+      publish: {
+        method: 'POST',
+        path: '/{id}/chrome-publish',
+        impact: 'high',
+        requires: ['body.part', 'body.base_revision'],
+        note: 'Publica el borrador de UNA parte en la tienda pública: body {part: header|footer, base_revision}.',
+      },
+    },
+  },
   site_templates: {
     path: '/admin/site-templates',
     readOnly: true,
@@ -145,7 +200,10 @@ export const RESOURCES = {
 };
 
 const GROUPS = [
-  { title: 'Multistore', resources: ['sites', 'site_templates', 'catalog_imports', 'product_sales_modes'] },
+  {
+    title: 'Multistore',
+    resources: ['sites', 'site_pages', 'site_chrome', 'site_templates', 'catalog_imports', 'product_sales_modes'],
+  },
   {
     title: 'Configuración de la tienda',
     resources: [
@@ -164,7 +222,7 @@ const GROUPS = [
 const tool = createExtensionTool({
   name: 'manage_minimalart_stores',
   intro:
-    'TIENDAS y configuración del backoffice: multistore (sites → site_id para todas las tools), plantillas, importación de catálogo, configuración de la tienda, app-settings y plataforma Mercatto.',
+    'TIENDAS y configuración del backoffice: multistore (sites → site_id para todas las tools; páginas y header/footer de cada tienda), plantillas, importación de catálogo, configuración de la tienda, app-settings y plataforma Mercatto.',
   resources: RESOURCES,
   groups: GROUPS,
 });

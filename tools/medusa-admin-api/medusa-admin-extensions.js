@@ -246,6 +246,17 @@ export const RESOURCES = {
       update_settings: { method: 'POST', path: '/settings' },
     },
   },
+  email_templates: {
+    path: '/admin/email-templates',
+    summary: 'Plantillas de email transaccional',
+    subActions: {
+      preview: { method: 'POST', path: '/{id}/preview', mutating: false, note: 'Render de prueba (no envía).' },
+      publish: { method: 'POST', path: '/{id}/publish', note: 'La plantilla pasa a usarse en los envíos reales.' },
+      unpublish: { method: 'POST', path: '/{id}/unpublish' },
+      test_send: { method: 'POST', path: '/{id}/test-send', impact: 'high', note: 'Envía un email REAL de prueba.' },
+      list_sends: { method: 'GET', path: '/{id}/sends', note: 'Historial de envíos (limit).' },
+    },
+  },
   sales_channels_b2c: {
     path: '/admin/sales-channels-b2c',
     readOnly: true,

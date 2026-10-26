@@ -3,7 +3,7 @@ import { afterEach, beforeEach, test } from "node:test";
 import { listResourceEndpoints } from "../../lib/extension-resources.js";
 import * as content from "../../tools/medusa-admin-api/medusa-admin-ext-content.js";
 import * as payments from "../../tools/medusa-admin-api/medusa-admin-ext-payments.js";
-import * as whatsapp from "../../tools/medusa-admin-api/medusa-admin-ext-whatsapp.js";
+import * as chatbot from "../../tools/medusa-admin-api/medusa-admin-ext-chatbot.js";
 import * as stores from "../../tools/medusa-admin-api/medusa-admin-ext-stores.js";
 import * as integrations from "../../tools/medusa-admin-api/medusa-admin-ext-integrations.js";
 import * as commerce from "../../tools/medusa-admin-api/medusa-admin-ext-commerce.js";
@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 test("chatbot: bots (PATCH update), versiones, publicación con confirm y bandeja", async () => {
-  const calls = callsOf(whatsapp);
+  const calls = callsOf(chatbot);
   assert.equal(calls.get("chatbot_bots.list"), "GET /admin/chatbot/bots");
   assert.equal(calls.get("chatbot_bots.update"), "PATCH /admin/chatbot/bots/{id}");
   assert.equal(calls.get("chatbot_bots.delete"), "DELETE /admin/chatbot/bots/{id}");
@@ -58,16 +58,16 @@ test("chatbot: bots (PATCH update), versiones, publicación con confirm y bandej
   }
   assert.equal(calls.get("chatbot_conversations.return_to_bot"), "POST /admin/chatbot/conversations/{id}/return-to-bot");
 
-  assert.equal(endpoint(whatsapp, "chatbot_bots", "publish").impact, "high");
-  assert.equal(endpoint(whatsapp, "chatbot_bots", "unpublish").impact, "high");
-  assert.equal(endpoint(whatsapp, "chatbot_conversations", "reply").impact, "high", "le escribe a un cliente");
-  assert.equal(endpoint(whatsapp, "chatbot_conversations", "close").impact, null);
+  assert.equal(endpoint(chatbot, "chatbot_bots", "publish").impact, "high");
+  assert.equal(endpoint(chatbot, "chatbot_bots", "unpublish").impact, "high");
+  assert.equal(endpoint(chatbot, "chatbot_conversations", "reply").impact, "high", "le escribe a un cliente");
+  assert.equal(endpoint(chatbot, "chatbot_conversations", "close").impact, null);
 
-  const blocked = await whatsapp.apiTool.function({ action: "sub_action", resource: "chatbot_bots", sub_action: "publish", id: "bot_1" });
+  const blocked = await chatbot.apiTool.function({ action: "sub_action", resource: "chatbot_bots", sub_action: "publish", id: "bot_1" });
   assert.equal(blocked.requires_confirmation, true);
   assert.equal(fetchCalls.length, 0);
 
-  const missing = await whatsapp.apiTool.function({
+  const missing = await chatbot.apiTool.function({
     action: "sub_action",
     resource: "chatbot_conversations",
     sub_action: "reply",
@@ -77,14 +77,14 @@ test("chatbot: bots (PATCH update), versiones, publicación con confirm y bandej
   });
   assert.match(missing.error, /body\.text/);
 
-  await whatsapp.apiTool.function({ action: "update", resource: "chatbot_bots", id: "bot_1", body: { name: "Bot" }, site_id: "site_a" });
+  await chatbot.apiTool.function({ action: "update", resource: "chatbot_bots", id: "bot_1", body: { name: "Bot" }, site_id: "site_a" });
   assert.equal(fetchCalls[0].options.method, "PATCH");
   assert.equal(fetchCalls[0].url.pathname, "/admin/chatbot/bots/bot_1");
   assert.equal(fetchCalls[0].options.headers["x-site-id"], "site_a");
 });
 
-test("páginas y header/footer de la tienda viven en content; publicar pide confirm", async () => {
-  const calls = callsOf(content);
+test("páginas y header/footer se editan desde Tiendas: viven en stores; publicar pide confirm", async () => {
+  const calls = callsOf(stores);
   assert.equal(calls.get("site_pages.list_pages"), "GET /admin/sites/{id}/pages");
   assert.equal(calls.get("site_pages.create_page"), "POST /admin/sites/{id}/pages");
   assert.equal(calls.get("site_pages.get_page"), "GET /admin/sites/{id}/pages/{child_id}");
@@ -97,11 +97,11 @@ test("páginas y header/footer de la tienda viven en content; publicar pide conf
   assert.equal(calls.get("site_chrome.publish"), "POST /admin/sites/{id}/chrome-publish");
   assert.equal(calls.has("site_pages.delete_page"), false, "no hay DELETE de páginas");
 
-  assert.equal(endpoint(content, "site_chrome", "preview").mutating, false);
-  assert.equal(endpoint(content, "site_chrome", "publish").impact, "high");
-  assert.equal(endpoint(content, "site_pages", "set_page_status").impact, "high");
+  assert.equal(endpoint(stores, "site_chrome", "preview").mutating, false);
+  assert.equal(endpoint(stores, "site_chrome", "publish").impact, "high");
+  assert.equal(endpoint(stores, "site_pages", "set_page_status").impact, "high");
 
-  await content.apiTool.function({
+  await stores.apiTool.function({
     action: "sub_action",
     resource: "site_chrome",
     sub_action: "discard_draft",
@@ -113,12 +113,14 @@ test("páginas y header/footer de la tienda viven en content; publicar pide conf
   assert.equal(fetchCalls[0].url.searchParams.get("part"), "header");
 });
 
-test("banners settings y etiquetas de medios", () => {
+test("banners settings y etiquetas de medios (content); plantillas de email siguen en extensions", () => {
   const calls = callsOf(content);
   assert.equal(calls.get("banner_settings.get"), "GET /admin/banners/settings");
   assert.equal(calls.get("banner_settings.update"), "POST /admin/banners/settings");
   assert.equal(calls.get("media_library.list_tags"), "GET /admin/media-library/tags");
   assert.equal(calls.get("media_library.update_tags"), "POST /admin/media-library/tags");
+  assert.equal(content.extensionResources.email_templates, undefined);
+  assert.equal(content.extensionResources.site_pages, undefined);
 });
 
 test("sites: dominio propio, medio de pago del checkout y preview del directorio; store_commerce ya no existe", () => {
@@ -174,26 +176,32 @@ test("agent commerce (sólo lectura), envia y buscador de SEO-GEO", () => {
   assert.equal(callsOf(growth).get("seo_geo.search_products"), "GET /admin/seo-geo/products");
 });
 
-test("pagos: beneficios (sync de todos), cuentas de cobro por tienda y links de venta", async () => {
+test("pagos: beneficios (sync de todos) y links de pago; las cuentas de cobro están en integraciones", async () => {
   const calls = callsOf(payments);
   assert.equal(calls.get("payment_benefits.sync_all"), "POST /admin/payment-benefits/sync");
   assert.equal(calls.get("payment_benefits.sync"), "POST /admin/payment-benefits/sync/{id}");
   assert.equal(calls.get("checkout_links.list"), "GET /admin/checkout-links");
+  const accounts = callsOf(integrations);
   for (const provider of ["mercadopago", "mobbex", "modo"]) {
-    const name = `${provider}_account`;
-    assert.equal(calls.get(`${name}.get`), `GET /admin/${provider}/site-account`);
-    assert.equal(calls.get(`${name}.update`), `POST /admin/${provider}/site-account`);
-    assert.equal(calls.get(`${name}.delete`), `DELETE /admin/${provider}/site-account`);
-    assert.equal(endpoint(payments, name, "update").impact, "high");
-    assert.equal(endpoint(payments, name, "delete").impact, "high");
-    assert.equal(endpoint(payments, name, "get").impact, null);
+    assert.equal(accounts.get(`payment_accounts.get_${provider}`), `GET /admin/${provider}/site-account`);
+    assert.equal(accounts.get(`payment_accounts.update_${provider}`), `POST /admin/${provider}/site-account`);
+    assert.equal(accounts.get(`payment_accounts.disconnect_${provider}`), `DELETE /admin/${provider}/site-account`);
+    assert.equal(endpoint(integrations, "payment_accounts", `update_${provider}`).impact, "high");
+    assert.equal(endpoint(integrations, "payment_accounts", `disconnect_${provider}`).impact, "high");
+    assert.equal(endpoint(integrations, "payment_accounts", `get_${provider}`).impact, null);
   }
+  assert.equal(Object.keys(integrations.extensionResources.payment_accounts.ops).length, 0, "el genérico site-credentials no se expone");
 
-  const blocked = await payments.apiTool.function({ action: "delete", resource: "modo_account", site_id: "site_a" });
+  const blocked = await integrations.apiTool.function({
+    action: "sub_action",
+    resource: "payment_accounts",
+    sub_action: "disconnect_modo",
+    site_id: "site_a",
+  });
   assert.equal(blocked.requires_confirmation, true);
   assert.equal(fetchCalls.length, 0);
 
-  await payments.apiTool.function({ action: "get", resource: "mercadopago_account", site_id: "site_a" });
+  await integrations.apiTool.function({ action: "sub_action", resource: "payment_accounts", sub_action: "get_mercadopago", site_id: "site_a" });
   assert.equal(fetchCalls[0].url.pathname, "/admin/mercadopago/site-account");
   assert.equal(fetchCalls[0].options.headers["x-site-id"], "site_a");
 });

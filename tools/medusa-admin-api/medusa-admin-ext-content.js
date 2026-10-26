@@ -1,11 +1,9 @@
 /**
- * CONTENIDO del storefront: banners, blog, landings, páginas y header/footer de
- * cada tienda (multistore), biblioteca de medios, videos (Vimeo) y plantillas de
- * email.
+ * CONTENIDO del storefront: las secciones Banners, Blog, Landing pages, Biblioteca
+ * de medios y Videos del backoffice (grupo "Contenido" de permisos).
  *
- * Banners, blog, landings, medios, videos, Vimeo y plantillas de email vivían en
- * `manage_minimalart_extensions` (1.9.0 los mueve acá): mismos nombres de
- * recurso, acciones y rutas.
+ * Vivían en `manage_minimalart_extensions` (1.9.0 los mueve acá): mismos nombres
+ * de recurso, acciones y rutas.
  *
  * Declarativa: ver `lib/extension-resources.js`.
  */
@@ -56,17 +54,6 @@ export const RESOURCES = {
     // `create` se mantiene por compatibilidad: la tool original lo mandaba a la raíz.
     ops: ['get', 'create', 'update'],
     summary: 'Configuración del blog (singleton; create/update = POST a la raíz)',
-  },
-  email_templates: {
-    path: '/admin/email-templates',
-    summary: 'Plantillas de email transaccional',
-    subActions: {
-      preview: { method: 'POST', path: '/{id}/preview', mutating: false, note: 'Render de prueba (no envía).' },
-      publish: { method: 'POST', path: '/{id}/publish', note: 'La plantilla pasa a usarse en los envíos reales.' },
-      unpublish: { method: 'POST', path: '/{id}/unpublish' },
-      test_send: { method: 'POST', path: '/{id}/test-send', impact: 'high', note: 'Envía un email REAL de prueba.' },
-      list_sends: { method: 'GET', path: '/{id}/sends', note: 'Historial de envíos (limit).' },
-    },
   },
   landing_pages: {
     path: '/admin/landing-pages',
@@ -131,75 +118,19 @@ export const RESOURCES = {
     },
   },
 
-  // ─── Páginas y header/footer de cada tienda (multistore) ───────────────────
-  site_pages: {
-    path: '/admin/sites',
-    ops: [],
-    summary: 'Páginas institucionales de una tienda (id = site_id, child_id = page_id)',
-    notes:
-      'create_page body {title, slug?, draft?, seo?} (sin slug se genera del título; nace en borrador). update_page edita título, slug, borrador o SEO: en una publicada sólo cambia el borrador hasta republicar; cambiar el slug de una publicada deja un redirect. get_page devuelve también dónde está enlazada (menú/footer).',
-    children: {
-      pages: { path: '/{id}/pages', ops: ['list', 'get', 'create', 'update'] },
-    },
-    subActions: {
-      set_page_status: {
-        method: 'POST',
-        path: '/{id}/pages/{child_id}/status',
-        impact: 'high',
-        requires: ['body.action'],
-        note: 'body {action: publish|unpublish|archive|restore}: cambia lo que ve el público. La respuesta trae dónde estaba enlazada.',
-      },
-    },
-  },
-  site_chrome: {
-    path: '/admin/sites',
-    ops: [],
-    summary: 'Header y footer de una tienda: borrador, preview y publicación (id = site_id)',
-    notes:
-      'Flujo: save_draft → (preview) → publish. El borrador nunca cambia el sitio público. base_revision = chrome_revision actual del sitio (409 si es vieja). Lo publicado se ve en la tienda en ≤60 s.',
-    subActions: {
-      save_draft: {
-        method: 'POST',
-        path: '/{id}/chrome-draft',
-        requires: ['body.part', 'body.draft', 'body.base_revision'],
-        note: 'body {part: header|footer, draft: {...}, base_revision}.',
-      },
-      discard_draft: {
-        method: 'DELETE',
-        path: '/{id}/chrome-draft',
-        requires: ['query.part'],
-        note: 'query {part: header|footer}.',
-      },
-      get_preview: { method: 'GET', path: '/{id}/chrome-preview' },
-      preview: {
-        method: 'POST',
-        path: '/{id}/chrome-preview',
-        mutating: false,
-        note: 'Preview con un override sin guardar: devuelve un token corto para el iframe del admin (no publica).',
-      },
-      publish: {
-        method: 'POST',
-        path: '/{id}/chrome-publish',
-        impact: 'high',
-        requires: ['body.part', 'body.base_revision'],
-        note: 'Publica el borrador de UNA parte en la tienda pública: body {part: header|footer, base_revision}.',
-      },
-    },
-  },
 };
 
 const GROUPS = [
   { title: 'Banners', resources: ['banners', 'banner_settings'] },
   { title: 'Blog', resources: ['blog_categories', 'blog_posts', 'blog_settings'] },
-  { title: 'Landings y páginas', resources: ['landing_pages', 'site_pages', 'site_chrome'] },
+  { title: 'Landings', resources: ['landing_pages'] },
   { title: 'Medios y video', resources: ['media_library', 'videos', 'vimeo'] },
-  { title: 'Emails', resources: ['email_templates'] },
 ];
 
 const tool = createExtensionTool({
   name: 'manage_minimalart_content',
   intro:
-    'CONTENIDO del storefront: banners, blog, landings, páginas y header/footer de cada tienda, biblioteca de medios, videos (Vimeo) y plantillas de email. Ids de tienda: manage_minimalart_stores resource=sites.',
+    'CONTENIDO del storefront (secciones Banners, Blog, Landing pages, Biblioteca de medios y Videos). Páginas y header/footer de cada tienda: manage_minimalart_stores. Plantillas de email: manage_minimalart_extensions.',
   resources: RESOURCES,
   groups: GROUPS,
   // Compat con manage_minimalart_extensions (de donde vienen estos recursos):

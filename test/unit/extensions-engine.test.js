@@ -285,12 +285,12 @@ test("unknown sub-action, action or resource returns an actionable error", async
 });
 
 test("high-impact actions require confirm: true", async () => {
-  const blocked = await contentTool.function({ action: "sub_action", resource: "email_templates", sub_action: "test_send", id: "tpl_1" });
+  const blocked = await legacyTool.function({ action: "sub_action", resource: "email_templates", sub_action: "test_send", id: "tpl_1" });
   assert.equal(blocked.requires_confirmation, true);
   assert.match(blocked.error, /confirm: true/);
   assert.equal(fetchCalls.length, 0);
 
-  await contentTool.function({
+  await legacyTool.function({
     action: "sub_action",
     resource: "email_templates",
     sub_action: "test_send",

@@ -41,6 +41,7 @@ test("every extension tool is registered, loads and exposes a valid JSON schema"
   const names = tools.map((t) => t.apiTool.definition.name).sort();
   assert.deepEqual(names, [
     "manage_minimalart_ai_assistant",
+    "manage_minimalart_chatbot",
     "manage_minimalart_commerce",
     "manage_minimalart_content",
     "manage_minimalart_extensions",
