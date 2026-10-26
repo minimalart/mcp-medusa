@@ -153,6 +153,11 @@ export const RESOURCES = {
     readOnly: true,
     summary: 'URL pública del storefront',
   },
+  minimum_purchases: {
+    path: '/admin/store-config/minimum-purchase',
+    ops: ['list', 'create', 'update', 'delete'],
+    summary: 'Montos mínimos de compra (condiciones de compra de la tienda)',
+  },
   app_settings: {
     path: '/admin/app-settings',
     singleton: true,
@@ -213,6 +218,7 @@ const GROUPS = [
       'store_legal_pages',
       'store_site_gate',
       'storefront_url',
+      'minimum_purchases',
       'app_settings',
     ],
   },

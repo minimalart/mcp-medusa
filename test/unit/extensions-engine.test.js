@@ -316,7 +316,7 @@ test("required query/body fields and forbidden query params are enforced", async
   const fiscal = await commerceTool.function({ action: "list", resource: "fiscal_documents", query: { owner_type: "company" } });
   assert.match(fiscal.error, /query\.owner_id/);
 
-  const reject = await commerceTool.function({
+  const reject = await legacyTool.function({
     action: "sub_action",
     resource: "b2b_draft_orders",
     sub_action: "reject",

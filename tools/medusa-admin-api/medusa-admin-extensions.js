@@ -1,7 +1,8 @@
 /**
  * Tool para las EXTENSIONES de catálogo y clientes del backoffice (no-core de
  * Medusa): métricas de commerce, atributos de producto (ficha técnica), marcas,
- * sucursales, empresas/corporativos B2B, grupos dinámicos, contactos y canales B2C.
+ * sucursales (y sus tipos), empresas B2B (y sus pedidos a validar), corporativos,
+ * grupos dinámicos, plantillas de email, contactos y canales B2C.
  *
  * 1.9.0 movió el contenido (banners, blog, landings, medios, videos, Vimeo,
  * plantillas de email) a `manage_minimalart_content` y los links de venta a
@@ -218,6 +219,40 @@ export const RESOURCES = {
       members: { path: '/{id}/members', ops: ['list', 'create', 'update', 'delete'], notes: { update: 'child_id = memberId.' } },
     },
   },
+  b2b_draft_orders: {
+    path: '/admin/b2b/draft-orders',
+    ops: ['list', 'get'],
+    summary: 'Presupuestos/pedidos B2B a aprobar (limit≤100, query status → {draft_orders,count,open_count})',
+    subActions: {
+      approve: {
+        method: 'POST',
+        path: '/{id}/approve',
+        impact: 'high',
+        note: 'Aprueba el pedido del cliente B2B. body {note?}.',
+      },
+      reject: {
+        method: 'POST',
+        path: '/{id}/reject',
+        impact: 'high',
+        requires: ['body.note'],
+        note: 'Rechaza; el cliente VE body.note (3-2000 chars).',
+      },
+      request_changes: {
+        method: 'POST',
+        path: '/{id}/request-changes',
+        impact: 'high',
+        requires: ['body.note'],
+        note: 'Pide cambios; el cliente VE body.note.',
+      },
+      register_payment: {
+        method: 'POST',
+        path: '/{id}/payment',
+        impact: 'high',
+        requires: ['body.amount'],
+        note: 'Registra un pago: body {amount>0, reference?, note?}.',
+      },
+    },
+  },
   contact_submissions: {
     path: '/admin/contact-submissions',
     ops: ['list', 'update', 'delete'],
@@ -262,6 +297,12 @@ export const RESOURCES = {
     readOnly: true,
     ops: ['list'],
     summary: 'Canales de venta B2C (solo list)',
+  },
+  branch_types: {
+    path: '/admin/branch-types',
+    readOnly: true,
+    ops: ['list'],
+    summary: 'Tipos de sucursal (query sales_channel_ids="a,b")',
   },
   store_locations: {
     path: '/admin/store-locations',

@@ -205,3 +205,14 @@ test("pagos: beneficios (sync de todos) y links de pago; las cuentas de cobro es
   assert.equal(fetchCalls[0].url.pathname, "/admin/mercadopago/site-account");
   assert.equal(fetchCalls[0].options.headers["x-site-id"], "site_a");
 });
+
+test("cada sección en una sola tool: compras mínimas en stores, pedidos B2B y tipos de sucursal en extensions", async () => {
+  const extensions = await import("../../tools/medusa-admin-api/medusa-admin-extensions.js");
+  assert.equal(callsOf(stores).get("minimum_purchases.list"), "GET /admin/store-config/minimum-purchase");
+  assert.equal(commerce.extensionResources.minimum_purchases, undefined);
+  const ext = callsOf(extensions);
+  assert.equal(ext.get("b2b_draft_orders.approve"), "POST /admin/b2b/draft-orders/{id}/approve");
+  assert.equal(ext.get("branch_types.list"), "GET /admin/branch-types");
+  assert.equal(commerce.extensionResources.b2b_draft_orders, undefined);
+  assert.equal(logistics.extensionResources.branch_types, undefined);
+});

@@ -1,7 +1,7 @@
 /**
  * Extensiones de LOGÍSTICA del boilerplate: Andreani, Correo Argentino, envia, delivery
  * propio (choferes, vehículos, zonas, reglas, rutas, ejecuciones), tipos de
- * sucursal, retiro en sucursal y datos de checkout de una orden.
+ * retiro en sucursal y datos de checkout de una orden.
  *
  * Declarativa: ver `lib/extension-resources.js`.
  */
@@ -145,12 +145,6 @@ export const RESOURCES = {
   },
 
   // ─── Sucursales y órdenes ───────────────────────────────────────────────────
-  branch_types: {
-    path: '/admin/branch-types',
-    readOnly: true,
-    ops: ['list'],
-    summary: 'Tipos de sucursal (query sales_channel_ids="a,b")',
-  },
   order_pickup: {
     path: '/admin/orders',
     ops: ['get'],
@@ -223,13 +217,13 @@ const GROUPS = [
       'delivery_executions',
     ],
   },
-  { title: 'Sucursales y órdenes', resources: ['branch_types', 'order_pickup', 'order_checkout'] },
+  { title: 'Órdenes', resources: ['order_pickup', 'order_checkout'] },
 ];
 
 const tool = createExtensionTool({
   name: 'manage_minimalart_logistics',
   intro:
-    'Extensiones de LOGÍSTICA del backoffice: Andreani, Correo Argentino, envia, delivery propio, tipos de sucursal, retiro en sucursal y checkout de una orden. Sucursales (cobertura, config): manage_minimalart_extensions resource=store_locations.',
+    'Extensiones de LOGÍSTICA del backoffice: Andreani, Correo Argentino, envia, delivery propio, retiro en sucursal y checkout de una orden. Sucursales (cobertura, config, tipos): manage_minimalart_extensions.',
   resources: RESOURCES,
   groups: GROUPS,
 });
