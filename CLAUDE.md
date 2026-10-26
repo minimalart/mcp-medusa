@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Medusa.js MCP (Model Context Protocol) server that provides automated API tools for Medusa e-commerce backend operations. It focuses on admin API functionality including order management, cart operations, and fulfillment processing.
 
-**Version:** 1.8.0
+**Version:** 1.9.0
 **Supports:** Local STDIO (npx) and Remote Streamable HTTP (Digital Ocean)
 
 ## Architecture
@@ -221,7 +221,7 @@ const response = await fetch('https://your-app.ondigitalocean.app/mcp', {
 
 ## Available Tools
 
-Targets Medusa **2.21.1** while staying compatible with **2.18.0** (the boilerplate's current version). Actions whose route is newer than 2.18 are wrapped with `withMinVersion()` (`lib/medusa-version.js`): a 404 becomes "Esta acción requiere Medusa >= X". Fields 2.18 rejects (`unit_of_measure`, promotion `metadata`, fulfillment `delivery_address`) are only sent when the caller passes them. Check routes with `node scripts/medusa-openapi-coverage.js --routes`.
+Targets Medusa **2.21.1** while staying compatible with **2.18.0** (the boilerplate's current version). Actions whose route is newer than 2.18 are wrapped with `withMinVersion()` (`lib/medusa-version.js`): a 404 becomes "Esta acción requiere Medusa >= X". Fields 2.18 rejects (`unit_of_measure`, promotion `metadata`, fulfillment `delivery_address`) are only sent when the caller passes them. Check routes with `node scripts/medusa-openapi-coverage.js --routes`: since 1.9.0 every operation of the 2.21.2 admin spec has a dedicated action except the intentional exclusions (`EXCLUDED_OPERATIONS` in that script, each with its reason: auth flows, invite accept, plugins list, password reset tokens, SSE and workflow-engine control). Routes behind a Medusa feature flag (translations, views, property labels…) are wrapped with `withFeatureFlag()` so a 404 names the flag to enable.
 
 ### Medusa Admin Tools (core)
 - **manage_medusa_admin_orders**: Order management: cancel, complete, archive, transfer (incl. `transfer_to_guest`), fulfillments, shipments, mark as delivered
@@ -253,7 +253,7 @@ Custom admin routes of the Mercatto boilerplate (extensions + plugins), one tool
 
 1.9.0 moved resources between tools keeping their names, actions and paths: content from `extensions` to `content`, `checkout_links` from `extensions` and `payment_benefits` from `commerce` to `payments` (`test/unit/extensions-legacy-compat.test.js` pins where each original resource lives). Embedders that store tool names (agent allow-lists, per-tool policies) must map the old tool to the new one for those resources. Each resource's RBAC permission is derived by the embedder from its declared paths, so a moved resource keeps the same permission.
 
-Routes that must never be reachable (secrets, raw DB, debug…) live in `lib/extension-exclusions.js` and are enforced at runtime by both the engine and `manage_medusa_admin_v2 request`. After changing extension tools, run `node scripts/verify-extension-routes.js <path-to-boilerplate>`: it must report 0 mismatches and 0 gaps.
+Routes that must never be reachable (secrets, raw DB, debug…) live in `lib/extension-exclusions.js` and are enforced at runtime by both the engine and `manage_medusa_admin_v2 request`. After changing extension tools, run `node scripts/verify-extension-routes.js <path-to-boilerplate> --strict`: it must exit 0 (0 mismatches, 0 gaps).
 
 ### Prompts
 `lib/prompts.js`: `OPERATOR_PROMPTS` (store operators: sales summary, catalog health, key customers, pending orders, promotions, campaign planning, save to memory) and `DEVELOPER_PROMPTS` (upgrade, integrations). Prompts declare `arguments`; `prompts/get` interpolates `{{arg}}`. The handler accepts `prompts` (list or `(req) => list`); the boilerplate publishes only the operator set.

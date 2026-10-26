@@ -2,6 +2,19 @@
 
 > **Fuente de verdad:** la definición de cada tool (`npm run list-tools`). Esta página resume; si difiere, gana la tool.
 
+## Cambios en 1.9.0
+
+**Cobertura completa de Brick** (`verify-extension-routes.js <brick> --strict` → 0 mismatches, 0 gaps) y **redistribución por dominio**:
+- `manage_minimalart_content` (nueva): `banners` (+ `banner_settings`), `blog_*`, `landing_pages`, `site_pages` (páginas de cada tienda: `list_pages|get_page|create_page|update_page`, `set_page_status!`), `site_chrome` (header/footer: `save_draft`, `discard_draft`, `preview`, `publish!`), `media_library` (+ `list_tags`, `update_tags`), `videos`, `vimeo`, `email_templates`.
+- `manage_minimalart_payments` (nueva): `payment_benefits` (+ `sync_all`), `mercadopago_account` / `mobbex_account` / `modo_account` (cuenta de cobro de una tienda: estado y credenciales enmascaradas; `update!` / `delete!`), `checkout_links`.
+- Movidos con el mismo nombre de recurso, acciones y rutas: contenido desde `manage_minimalart_extensions`, `checkout_links` desde `extensions` y `payment_benefits` desde `commerce`. Quien guarde nombres de tool (allow-lists de agentes, políticas por tool) tiene que mapear la tool vieja a la nueva para esos recursos.
+- `manage_minimalart_whatsapp`: chat web (`chatbot_bots` con versiones, `publish!`/`unpublish!`, `restore_version`; `chatbot_capabilities`; `chatbot_conversations` con `assign`, `release`, `close`, `return_to_bot`, `reply!`).
+- `manage_minimalart_stores`: se quitó `store_commerce` (las rutas `/admin/store-config/commerce/*` ya no existen); `sites` suma `verify_custom_domain!`, `link_checkout_provider!` y el preview del directorio.
+- `manage_minimalart_integrations`: `ga4_config.test` llama a `/admin/ga4-config/test-connection` (antes a una ruta inexistente); `typesense_store_order` (orden de productos por tienda; `update!` publica), `meta_catalog`, ERP `drift`, `set_drift_owner`, `sale_preview` y `erp_config.delete!`.
+- `manage_minimalart_commerce`: `agent_commerce` (sólo lectura). `manage_minimalart_logistics`: `envia`. `manage_minimalart_growth`: `seo_geo.search_products`.
+
+**Core de Medusa:** acción dedicada para cada operación del spec admin 2.21.2 (claims, exchanges y returns completos, tags/tipos/variantes/imports de productos, reglas de promociones, precios de listas, motivos de devolución y reembolso, tipos de envío, niveles de inventario, traducciones, vistas, layouts, uploads…). Exclusiones intencionales con motivo en `EXCLUDED_OPERATIONS` (`scripts/medusa-openapi-coverage.js`).
+
 ## Cambios en 1.8.0
 
 **Ficha técnica (plugin product-attributes del boilerplate)** en `manage_minimalart_extensions`:
