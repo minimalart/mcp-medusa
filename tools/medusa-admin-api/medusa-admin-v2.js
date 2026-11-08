@@ -380,7 +380,7 @@ async function uploadFiles(args, headers) {
   });
 }
 
-const SAFE_REQUEST_HEADERS = new Set(["x-no-compression"]);
+const SAFE_REQUEST_HEADERS = new Set(["x-no-compression", "x-site-id"]);
 
 function safeRequestHeaders(headers) {
   if (!headers || typeof headers !== "object" || Array.isArray(headers)) return {};
@@ -641,7 +641,7 @@ const apiTool = {
         default_location_id: { type: "string", description: "update_store." },
         headers: {
           type: "object",
-          description: "Optional x-no-compression header. Credentials cannot be passed: every call runs as the connected user.",
+          description: "Optional x-no-compression and x-site-id headers. x-site-id selects the active store (or * for all stores); backend permissions still apply. Credentials cannot be passed: every call runs as the connected user.",
         },
         q: {
           type: "string",
