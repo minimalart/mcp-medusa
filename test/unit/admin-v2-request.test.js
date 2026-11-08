@@ -42,6 +42,27 @@ function lastCall() {
 }
 
 describe("request action", () => {
+  test("preserves store scope while dropping credential and unrelated headers", async () => {
+    for (const scope of ["demo_main", "demo_other", "*"]) {
+      for (const args of [
+        { action: "request", path: "/admin/customer-realms/customers" },
+        { action: "list", resource: "stores" },
+        { action: "get", resource: "stores", id: "store_1" },
+      ]) {
+        await apiTool.function({ ...args, headers: {
+          "X-Site-Id": scope, "x-no-compression": "true",
+          Authorization: "Bearer untrusted", Cookie: "untrusted", "x-unrelated": "drop",
+        } });
+        const headers = fetchCalls.at(-1).options.headers;
+        assert.equal(headers["X-Site-Id"], scope);
+        assert.equal(headers["x-no-compression"], "true");
+        assert.equal(headers.Authorization, "Basic sk_test");
+        assert.equal(headers.Cookie, undefined);
+        assert.equal(headers["x-unrelated"], undefined);
+      }
+    }
+  });
+
   test("supports PUT with a JSON body", async () => {
     await apiTool.function({ action: "request", method: "put", path: "/admin/custom/thing", body: { a: 1 } });
     assert.equal(lastCall().method, "PUT");
