@@ -71,6 +71,36 @@ test("initialize negotiates the latest supported HTTP protocol and exposes promp
   assert.equal(res.body.result.serverInfo.version, "1.3.0");
 });
 
+for (const protocolVersion of ["2025-03-26", "2025-06-18", "2025-11-25"]) {
+  test(`${protocolVersion}: initialize and subsequent tools/list accept the negotiated version`, async () => {
+    const handler = createHandler();
+    const initialized = createResponse();
+    await handler.handleRequest(createPost({
+      jsonrpc: "2.0", id: 1, method: "initialize",
+      params: { protocolVersion, capabilities: {}, clientInfo: { name: "codex", version: "test" } },
+    }), initialized);
+    assert.equal(initialized.statusCode, 200);
+    assert.equal(initialized.body.result?.protocolVersion, protocolVersion);
+
+    const headers = {
+      "mcp-protocol-version": protocolVersion,
+      "mcp-session-id": initialized.headers["Mcp-Session-Id"],
+    };
+    const notified = createResponse();
+    await handler.handleRequest(createPost({
+      jsonrpc: "2.0", method: "notifications/initialized",
+    }, headers), notified);
+    assert.equal(notified.statusCode, 204);
+
+    const listed = createResponse();
+    await handler.handleRequest(createPost({
+      jsonrpc: "2.0", id: 2, method: "tools/list",
+    }, headers), listed);
+    assert.equal(listed.statusCode, 200);
+    assert.deepEqual(listed.body.result.tools, []);
+  });
+}
+
 test("unsupported MCP-Protocol-Version header returns a JSON-RPC error", async () => {
   const handler = createHandler();
   const res = createResponse();
