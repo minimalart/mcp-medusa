@@ -304,6 +304,68 @@ describe("orders tool: list", () => {
     assert.deepEqual(routes(), ["GET /admin/orders"]);
     assert.deepEqual(Object.fromEntries(call().query), { q: "buyer", limit: "5", offset: "10", fields: "id" });
   });
+
+  const exactCases = [
+    ["email", "BUYER@example.com", "email", { email: "buyer@example.com" }, { email: "other@example.com" }],
+    ["cart_id", "cart_1", "cart.id", { cart: { id: "cart_1" } }, { cart: { id: "cart_11" } }],
+    ["currency_code", "ARS", "currency_code", { currency_code: "ars" }, { currency_code: "usd" }],
+    ["tax_rate", "21%", "items.tax_lines.rate,shipping_methods.tax_lines.rate",
+      { items: [{ tax_lines: [{ rate: 21 }] }] }, { items: [{ tax_lines: [{ rate: 10.5 }] }] }],
+    ["payment_status", "captured", "payment_status", { payment_status: "captured" }, { payment_status: "authorized" }],
+    ["fulfillment_status", "fulfilled", "fulfillment_status",
+      { fulfillment_status: "fulfilled" }, { fulfillment_status: "partially_fulfilled" }],
+  ];
+
+  for (const [filter, input, requestedFields, match, other] of exactCases) {
+    test(`applies ${filter} exactly, including an empty result for a non-match`, async () => {
+      const candidates = { orders: [{ id: "order_other", ...other }, { id: "order_match", ...match }], count: 2 };
+      const selected = { id: "order_match", display_id: 42 };
+      respondWith(
+        { status: 200, body: candidates },
+        { status: 200, body: { orders: [selected] } },
+        { status: 200, body: { orders: [candidates.orders[0]], count: 1 } }
+      );
+      const args = { action: "list", [filter]: input, fields: "id,display_id", limit: 1 };
+
+      assert.deepEqual(await orders.function(args), { orders: [selected], count: 1, offset: 0, limit: 1 });
+      assert.deepEqual(await orders.function(args), { orders: [], count: 0, offset: 0, limit: 1 });
+      assert.deepEqual(routes(), Array(3).fill("GET /admin/orders"));
+      assert.equal(call(0).query.get("fields"), `id,${requestedFields}`);
+      assert.equal(call(0).query.get("q"), filter === "email" ? "buyer@example.com" : null);
+      assert.equal(call(0).query.get("limit"), "50");
+      assert.equal(call(0).query.has(filter), false);
+      assert.equal(call(1).query.get("id[]"), "order_match");
+      assert.equal(call(1).query.get("fields"), "id,display_id");
+    });
+  }
+
+  test("combines filters and paginates the matches, including a tax rate on shipping", async () => {
+    const matching = (id) => ({ id, currency_code: "ars", shipping_methods: [{ tax_lines: [{ rate: 0 }] }] });
+    respondWith(
+      { status: 200, body: { orders: [matching("order_1"), { id: "order_2", currency_code: "ars" }], count: 5 } },
+      { status: 200, body: { orders: [matching("order_3"), matching("order_4"), matching("order_5")], count: 5 } },
+      { status: 200, body: { orders: [{ id: "order_4" }, { id: "order_3" }] } }
+    );
+    const result = await orders.function({
+      action: "list", tax_rate: "0", currency_code: "ars", region_id: "reg_1", q: "buyer", offset: 1, limit: 2
+    });
+
+    assert.deepEqual(result, { orders: [{ id: "order_3" }, { id: "order_4" }], count: 4, offset: 1, limit: 2 });
+    assert.equal(call(1).query.get("offset"), "2");
+    assert.equal(call(1).query.get("q"), "buyer");
+    assert.equal(call(1).query.get("region_id"), "reg_1");
+    assert.deepEqual(call(2).query.getAll("id[]"), ["order_3", "order_4"]);
+  });
+
+  test("orders with the requested number must also match the other filters", async () => {
+    respondWith({ status: 200, body: { orders: [{ id: "order_12", display_id: 12, currency_code: "ars" }], count: 1 } });
+
+    const result = await orders.function({ action: "list", display_id: "#12", currency_code: "usd" });
+
+    assert.deepEqual(result, { orders: [], count: 0, offset: 0, limit: 15 });
+    assert.deepEqual(routes(), ["GET /admin/orders"]);
+    assert.equal(call().query.get("q"), "12");
+  });
 });
 
 describe("orders tool: new order routes", () => {
@@ -383,6 +445,16 @@ describe("draft orders: added items and shipping methods", () => {
 });
 
 describe("products tool: tags, types, batch, variants, import/export", () => {
+  test("forwards handle on product lists", async () => {
+    const response = { products: [{ id: "prod_1", handle: "exact-handle" }], count: 1 };
+    respondWith({ status: 200, body: response });
+    const result = await products.function({ action: "list", handle: "exact-handle", limit: 2 });
+
+    assert.deepEqual(result, response);
+    assert.deepEqual(routes(), ["GET /admin/products"]);
+    assert.equal(call().query.get("handle"), "exact-handle");
+  });
+
   test("tags and types CRUD", async () => {
     await products.function({ action: "get_tag", id: "ptag_1" });
     await products.function({ action: "create_tag", value: "verano" });
@@ -464,6 +536,16 @@ describe("products tool: tags, types, batch, variants, import/export", () => {
 });
 
 describe("pricing tool: price lists, promotion rules, campaigns, price preferences", () => {
+  test("forwards code on promotion lists", async () => {
+    const response = { promotions: [], count: 0 };
+    respondWith({ status: 200, body: response });
+    const result = await pricing.function({ action: "list_promotions", code: "UNUSED+CODE", limit: 2 });
+
+    assert.deepEqual(result, response);
+    assert.deepEqual(routes(), ["GET /admin/promotions"]);
+    assert.equal(call().query.get("code"), "UNUSED+CODE");
+  });
+
   test("price list prices and products", async () => {
     await pricing.function({ action: "list_price_list_prices", id: "plist_1", limit: 50 });
     await pricing.function({ action: "batch_price_list_prices", id: "plist_1", create: [{ variant_id: "v1", currency_code: "ars", amount: 100 }] });

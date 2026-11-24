@@ -148,6 +148,7 @@ async function listProducts(baseUrl, headers, args) {
   if (args.limit) params.append('limit', args.limit.toString());
   if (args.offset) params.append('offset', args.offset.toString());
   if (args.q) params.append('q', args.q);
+  appendQueryParam(params, 'handle', args.handle);
   if (args.collection_id) args.collection_id.forEach(id => params.append('collection_id[]', id));
   if (args.category_id) args.category_id.forEach(id => params.append('category_id[]', id));
   if (args.tag_id) args.tag_id.forEach(id => params.append('tag_id[]', id));
