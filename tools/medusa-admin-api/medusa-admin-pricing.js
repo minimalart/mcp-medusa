@@ -166,6 +166,7 @@ async function listPromotions(baseUrl, headers, args) {
   if (args.limit) params.append('limit', args.limit.toString());
   if (args.offset) params.append('offset', args.offset.toString());
   if (args.q) params.append('q', args.q);
+  appendQueryParam(params, 'code', args.code);
 
   const url = `${baseUrl}/admin/promotions?${params.toString()}`;
   return await makeRequest(url, { headers });

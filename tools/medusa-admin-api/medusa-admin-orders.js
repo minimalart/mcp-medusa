@@ -6,6 +6,59 @@
 import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
 import { sentGatedFields, withGatedFields, withMedusaErrorHints, withMinVersion } from "../../lib/medusa-version.js";
 
+const ORDER_SEARCH_PAGE_SIZE = 50;
+const ORDER_MATCH_FIELDS = {
+  email: 'email',
+  cart_id: 'cart.id',
+  currency_code: 'currency_code',
+  tax_rate: 'items.tax_lines.rate,shipping_methods.tax_lines.rate',
+  payment_status: 'payment_status',
+  fulfillment_status: 'fulfillment_status'
+};
+
+function normalizeTaxRate(value) {
+  const input = String(value).trim().replace(/%$/, '');
+  if (!/^\d+(?:\.\d+)?$/.test(input) || !Number.isFinite(Number(input))) {
+    throw new Error('tax_rate must be a non-negative percentage, e.g. "21" or "21%".');
+  }
+  return Number(input);
+}
+
+function matchesOrder(order, filters) {
+  return Object.entries(filters).every(([key, value]) => {
+    switch (key) {
+      case 'tax_rate':
+        return [...(order.items ?? []), ...(order.shipping_methods ?? [])].some((line) =>
+          line.tax_lines?.some((tax) => tax.rate != null && Number(tax.rate) === value)
+        );
+      case 'cart_id':
+        return order.cart?.id === value;
+      case 'email':
+      case 'currency_code':
+        return order[key]?.toLowerCase() === value;
+      default:
+        return order[key] === value;
+    }
+  });
+}
+
+// Medusa's public list validator drops these filters. Read only the fields needed to
+// evaluate them and let Medusa compute payment and fulfillment statuses as usual.
+async function* orderCandidates(config, filters, q, fields, limit = ORDER_SEARCH_PAGE_SIZE) {
+  let offset = 0;
+  while (true) {
+    const { orders, count } = await getOrderAction(config, '/admin/orders', {
+      ...filters, q, fields, limit, offset
+    });
+    if (!Array.isArray(orders) || !Number.isSafeInteger(count)) {
+      throw new Error('Medusa returned an invalid order search page.');
+    }
+    yield* orders;
+    offset += orders.length;
+    if (offset >= count || orders.length === 0) return;
+  }
+}
+
 /**
  * Function to list orders with filtering and pagination.
  *
@@ -21,7 +74,7 @@ import { sentGatedFields, withGatedFields, withMedusaErrorHints, withMinVersion 
  * @param {string} [args.email] - Filter by customer email.
  * @param {string} [args.region_id] - Filter by region ID.
  * @param {string} [args.currency_code] - Filter by currency code.
- * @param {string} [args.tax_rate] - Filter by tax rate.
+ * @param {string} [args.tax_rate] - Match the percentage on any item or shipping tax line.
  * @param {string} [args.created_at] - Filter by creation date.
  * @param {string} [args.updated_at] - Filter by update date.
  * @returns {Promise<Object>} - The result of the orders listing.
@@ -32,37 +85,67 @@ const listOrders = async (args = {}) => {
 
   const { display_id: displayId, ...filters } = args;
   try {
-    if (displayId === undefined) {
+    const exact = {};
+    for (const key of Object.keys(ORDER_MATCH_FIELDS)) {
+      if (filters[key] === undefined) continue;
+      const value = String(filters[key]).trim();
+      if (!value) return { error: `${key} must not be empty.` };
+      exact[key] = key === 'tax_rate' ? normalizeTaxRate(value) : value;
+      delete filters[key];
+    }
+    if (exact.email !== undefined) exact.email = exact.email.toLowerCase();
+    if (exact.currency_code !== undefined) exact.currency_code = exact.currency_code.toLowerCase();
+
+    const exactFields = Object.keys(exact).map((key) => ORDER_MATCH_FIELDS[key]);
+    if (displayId === undefined && exactFields.length === 0) {
       return await getOrderAction(config, '/admin/orders', filters);
     }
 
-    const input = String(displayId).trim().replace(/^#/, '');
-    const orderNumber = Number(input);
-    if (!/^\d+$/.test(input) || !Number.isSafeInteger(orderNumber) || orderNumber < 1) {
-      return { error: 'display_id must be a positive order number, e.g. "123" or "#123".' };
+    const { limit = 15, offset = 0 } = filters;
+    const empty = { orders: [], count: 0, limit, offset };
+    if (!Number.isSafeInteger(limit) || limit < 0 || !Number.isSafeInteger(offset) || offset < 0) {
+      return { error: 'limit and offset must be non-negative integers.' };
     }
 
-    // Medusa accepts q as a partial match across several fields. Only use an exact display_id match.
-    let searchOffset = 0;
-    while (true) {
-      const { orders, count } = await getOrderAction(config, '/admin/orders', {
-        ...filters,
-        q: String(orderNumber),
-        fields: 'id,display_id',
-        limit: 100,
-        offset: searchOffset
-      });
-      const match = orders.find((order) => order.display_id === orderNumber);
-      if (match) {
-        // Reapply the caller's projection, pagination and any additional search term to this ID alone.
-        return await getOrderAction(config, '/admin/orders', { ...filters, id: match.id });
+    if (displayId !== undefined) {
+      const input = String(displayId).trim().replace(/^#/, '');
+      const orderNumber = Number(input);
+      if (!/^\d+$/.test(input) || !Number.isSafeInteger(orderNumber) || orderNumber < 1) {
+        return { error: 'display_id must be a positive order number, e.g. "123" or "#123".' };
       }
-
-      searchOffset += orders.length;
-      if (orders.length === 0 || searchOffset >= count) break;
+      const fields = ['id', 'display_id', ...exactFields].join(',');
+      for await (const order of orderCandidates(config, filters, String(orderNumber), fields, 100)) {
+        if (order.display_id !== orderNumber) continue;
+        if (!matchesOrder(order, exact)) return empty;
+        // Apply the caller's projection, pagination and any additional search term to this ID alone.
+        return await getOrderAction(config, '/admin/orders', { ...filters, id: order.id });
+      }
+      return empty;
     }
 
-    return { orders: [], count: 0, limit: filters.limit ?? 15, offset: filters.offset ?? 0 };
+    let count = 0;
+    const ids = [];
+    const fields = ['id', ...exactFields].join(',');
+    const search = filters.q || exact.email;
+    for await (const order of orderCandidates(config, filters, search, fields)) {
+      if (!matchesOrder(order, exact)) continue;
+      if (count >= offset && ids.length < limit) ids.push(order.id);
+      count += 1;
+    }
+
+    // Fetch only the requested page by ID, preserving the original fields and candidate order.
+    const orders = [];
+    for (let start = 0; start < ids.length; start += ORDER_SEARCH_PAGE_SIZE) {
+      const batch = ids.slice(start, start + ORDER_SEARCH_PAGE_SIZE);
+      const data = await getOrderAction(config, '/admin/orders', {
+        ...filters, id: batch, limit: batch.length, offset: 0
+      });
+      const byId = new Map(data.orders.map((order) => [order.id, order]));
+      for (const id of batch) {
+        if (byId.has(id)) orders.push(byId.get(id));
+      }
+    }
+    return { ...empty, orders, count };
   } catch (error) {
     console.error('Error listing orders:', error);
     return { error: `An error occurred while listing orders: ${error.message}` };
@@ -824,7 +907,7 @@ const apiTool = {
       'Fulfillment, shipment and delivery actions notify the customer unless no_notification is true. ' +
       'update (email, shipping_address, billing_address, locale, metadata); list_line_items; list_shipping_options (options usable for this order); ' +
       'add_credit_line (amount + reference + reference_id: changes what the customer owes or is owed); authorize_payment_session (payment_session_id; authorizes the payment with the provider). ' +
-      'export: starts an asynchronous CSV export of ALL orders matching the list filters (or query); returns transaction_id and the file arrives as an admin notification. ' +
+      'export: starts an asynchronous CSV export of orders matching the native Medusa export filters; returns transaction_id and the file arrives as an admin notification. ' +
       'create_standalone_fulfillment / cancel_standalone_fulfillment / create_standalone_shipment (fulfillment_id + labels): low-level Fulfillment Module records (/admin/fulfillments) that do not run the order workflow; prefer the order fulfillment actions above.',
     parameters: {
         type: 'object',
@@ -854,11 +937,11 @@ const apiTool = {
           },
           fulfillment_status: {
             type: 'string',
-            description: 'Filter by fulfillment status.'
+            description: 'list: exact Medusa fulfillment status.'
           },
           payment_status: {
             type: 'string',
-            description: 'Filter by payment status.'
+            description: 'list: exact Medusa payment status.'
           },
           display_id: {
             type: 'string',
@@ -870,7 +953,7 @@ const apiTool = {
           },
           cart_id: {
             type: 'string',
-            description: 'Filter by cart ID.'
+            description: 'list: exact ID of the cart linked to the order.'
           },
           customer_id: {
             type: 'string',
@@ -878,7 +961,7 @@ const apiTool = {
           },
           email: {
             type: 'string',
-            description: 'Filter by customer email, or the guest email for transfer_to_guest.'
+            description: 'list: exact order email (case-insensitive); transfer_to_guest: guest email.'
           },
           region_id: {
             type: 'string',
@@ -886,11 +969,11 @@ const apiTool = {
           },
           currency_code: {
             type: 'string',
-            description: 'Filter by currency code.'
+            description: 'list: exact currency code (case-insensitive).'
           },
           tax_rate: {
             type: 'string',
-            description: 'Filter by tax rate.'
+            description: 'list: exact tax percentage on any item or shipping tax line (e.g. "21" or "21%").'
           },
           created_at: {
             type: 'object',
