@@ -255,6 +255,57 @@ describe("returns tool: returns, order changes and return reasons", () => {
   });
 });
 
+describe("orders tool: list", () => {
+  test("looks up a visible order number across search pages before requesting the exact order", async () => {
+    const exact = { orders: [{ id: "order_12", status: "pending" }], count: 1, offset: 0, limit: 1 };
+    respondWith(
+      { status: 200, body: { orders: [{ id: "order_120", display_id: 120 }], count: 2 } },
+      { status: 200, body: { orders: [{ id: "order_12", display_id: 12 }], count: 2 } },
+      { status: 200, body: exact }
+    );
+
+    const result = await orders.function({
+      action: "list", display_id: " #0012 ", fields: "id,status", limit: 1, status: "pending", q: "buyer"
+    });
+
+    assert.deepEqual(result, exact);
+    assert.deepEqual(routes(), Array(3).fill("GET /admin/orders"));
+    for (const index of [0, 1]) {
+      assert.deepEqual(Object.fromEntries(call(index).query), {
+        q: "12", fields: "id,display_id", limit: "100", offset: String(index), status: "pending"
+      });
+    }
+    assert.deepEqual(Object.fromEntries(call(2).query), {
+      id: "order_12", fields: "id,status", limit: "1", status: "pending", q: "buyer"
+    });
+  });
+
+  test("returns an empty page when only partial matches exist", async () => {
+    respondWith({ status: 200, body: { orders: [{ id: "order_120", display_id: 120 }], count: 1 } });
+
+    const result = await orders.function({ action: "list", display_id: "12", offset: 4 });
+
+    assert.deepEqual(result, { orders: [], count: 0, limit: 15, offset: 4 });
+    assert.deepEqual(routes(), ["GET /admin/orders"]);
+    assert.equal(call().query.get("offset"), "0");
+  });
+
+  test("rejects invalid numbers without querying Medusa", async () => {
+    for (const display_id of ["", "#", "12abc", "0", "9007199254740992"]) {
+      const result = await orders.function({ action: "list", display_id });
+      assert.match(result.error, /positive order number/);
+    }
+    assert.deepEqual(routes(), []);
+  });
+
+  test("preserves ordinary list searches and pagination", async () => {
+    await orders.function({ action: "list", q: "buyer", limit: 5, offset: 10, fields: "id" });
+
+    assert.deepEqual(routes(), ["GET /admin/orders"]);
+    assert.deepEqual(Object.fromEntries(call().query), { q: "buyer", limit: "5", offset: "10", fields: "id" });
+  });
+});
+
 describe("orders tool: new order routes", () => {
   test("update, credit lines, line items, shipping options, payment session, export", async () => {
     const updated = await orders.function({ action: "update", id: "order_1", email: "new@example.com", status: "x" });

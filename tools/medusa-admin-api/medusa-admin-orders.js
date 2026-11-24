@@ -10,12 +10,12 @@ import { sentGatedFields, withGatedFields, withMedusaErrorHints, withMinVersion 
  * Function to list orders with filtering and pagination.
  *
  * @param {Object} args - Arguments for listing orders.
- * @param {number} [args.limit=20] - Maximum number of orders to return.
+ * @param {number} [args.limit=15] - Maximum number of orders to return.
  * @param {number} [args.offset=0] - Number of orders to skip.
  * @param {string} [args.status] - Filter by order status.
  * @param {string} [args.fulfillment_status] - Filter by fulfillment status.
  * @param {string} [args.payment_status] - Filter by payment status.
- * @param {string} [args.display_id] - Filter by display ID.
+ * @param {string} [args.display_id] - Match an exact order number, with an optional # prefix.
  * @param {string} [args.cart_id] - Filter by cart ID.
  * @param {string} [args.customer_id] - Filter by customer ID.
  * @param {string} [args.email] - Filter by customer email.
@@ -27,29 +27,42 @@ import { sentGatedFields, withGatedFields, withMedusaErrorHints, withMinVersion 
  * @returns {Promise<Object>} - The result of the orders listing.
  */
 const listOrders = async (args = {}) => {
-  const rawBaseUrl = process.env.MEDUSA_BASE_URL || 'http://localhost:9000';
-  const baseUrl = normalizeBaseUrl(rawBaseUrl);
-  const apiKey = process.env.MEDUSA_API_KEY || process.env.MEDUSA_JWT || process.env.MEDUSA_SESSION_COOKIE || process.env.MEDUSA_COOKIE;
+  const config = getOrdersConfig();
+  if (config.error) return config;
 
-  if (!baseUrl || !hasMedusaCredentials()) {
-    return { error: missingCredentialsMessage() };
-  }
-  //console.log(`base url: ${baseUrl}`)
-  //console.log(`api key: ${apiKey}`)
+  const { display_id: displayId, ...filters } = args;
   try {
-    const url = new URL(`${baseUrl}/admin/orders`);
-    
-    // Add query parameters
-    Object.entries(args).forEach(([key, value]) => {
-      appendQueryParam(url.searchParams, key, value);
-    });
+    if (displayId === undefined) {
+      return await getOrderAction(config, '/admin/orders', filters);
+    }
 
-    const data = await makeRequest(url.toString(), {
-      method: 'GET',
-      headers: createHeaders(apiKey)
-    });
-    
-    return data;
+    const input = String(displayId).trim().replace(/^#/, '');
+    const orderNumber = Number(input);
+    if (!/^\d+$/.test(input) || !Number.isSafeInteger(orderNumber) || orderNumber < 1) {
+      return { error: 'display_id must be a positive order number, e.g. "123" or "#123".' };
+    }
+
+    // Medusa accepts q as a partial match across several fields. Only use an exact display_id match.
+    let searchOffset = 0;
+    while (true) {
+      const { orders, count } = await getOrderAction(config, '/admin/orders', {
+        ...filters,
+        q: String(orderNumber),
+        fields: 'id,display_id',
+        limit: 100,
+        offset: searchOffset
+      });
+      const match = orders.find((order) => order.display_id === orderNumber);
+      if (match) {
+        // Reapply the caller's projection, pagination and any additional search term to this ID alone.
+        return await getOrderAction(config, '/admin/orders', { ...filters, id: match.id });
+      }
+
+      searchOffset += orders.length;
+      if (orders.length === 0 || searchOffset >= count) break;
+    }
+
+    return { orders: [], count: 0, limit: filters.limit ?? 15, offset: filters.offset ?? 0 };
   } catch (error) {
     console.error('Error listing orders:', error);
     return { error: `An error occurred while listing orders: ${error.message}` };
@@ -803,7 +816,7 @@ const apiTool = {
   definition: {
     name: 'manage_medusa_admin_orders',
     description:
-      'Medusa Admin orders (Medusa 2.17.2+, incl. 2.18 and 2.21.1): list, get, cancel, complete, archive. ' +
+      'Medusa Admin orders (Medusa 2.17.2+, incl. 2.18 and 2.21.1): list (use display_id for an exact order number, e.g. "#123"), get, cancel, complete, archive. ' +
       'transfer (customer_id: sends the customer a transfer request they must accept; optional description, internal_note, update_order_email), ' +
       'transfer_to_guest (email: moves the order to a guest customer with that email, e.g. to fix a mistyped email; Medusa >= 2.18), cancel_transfer (cancels a pending transfer request). ' +
       'Fulfillment flow: list_fulfillments → create_fulfillment (items [{id: order line item ID, quantity}], optional location_id, shipping_option_id, no_notification, metadata, delivery_address (Medusa >= 2.19)) → ' +
@@ -829,7 +842,7 @@ const apiTool = {
           // List parameters
           limit: {
             type: 'number',
-            description: 'Maximum number of orders to return (default: 20).'
+            description: 'Maximum number of orders to return (default: 15).'
           },
           offset: {
             type: 'number',
@@ -849,7 +862,11 @@ const apiTool = {
           },
           display_id: {
             type: 'string',
-            description: 'Filter by display ID.'
+            description: 'list: exact order number (e.g. "123" or "#123").'
+          },
+          q: {
+            type: 'string',
+            description: 'list/export: partial search across order fields.'
           },
           cart_id: {
             type: 'string',
