@@ -3,7 +3,7 @@
  * Supports sales channels operations and product associations
  */
 
-import { createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
 
 async function handleSalesChannelsOperation(args) {
   const rawBaseUrl = process.env.MEDUSA_BASE_URL || 'http://localhost:9000';
@@ -43,6 +43,8 @@ async function listSalesChannels(baseUrl, headers, args) {
   if (args.limit) params.append('limit', args.limit.toString());
   if (args.offset) params.append('offset', args.offset.toString());
   if (args.q) params.append('q', args.q);
+  appendQueryParam(params, 'name', args.name);
+  appendQueryParam(params, 'is_disabled', args.is_disabled);
 
   const url = `${baseUrl}/admin/sales-channels?${params.toString()}`;
   return await makeRequest(url, { headers });
@@ -153,9 +155,9 @@ export const apiTool = {
         limit: { type: 'number', description: 'Maximum number of items to return.' },
         offset: { type: 'number', description: 'Number of items to skip.' },
         q: { type: 'string', description: 'Search query.' },
-        name: { type: 'string', description: 'Sales channel name.' },
+        name: { type: 'string', description: 'Sales channel name; list matches it exactly.' },
         description: { type: 'string', description: 'Sales channel description.' },
-        is_disabled: { type: 'boolean', description: 'Whether channel is disabled.' },
+        is_disabled: { type: 'boolean', description: 'Whether channel is disabled; list accepts true or false as a filter.' },
         product_ids: { type: 'array', items: { type: 'string' }, description: 'Product IDs to add/remove.' },
         metadata: { type: 'object', description: 'Additional metadata.' }
       },

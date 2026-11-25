@@ -57,7 +57,9 @@ before(async () => {
   await createPair('categories', 'product-categories', 'product_category', (name) => ({ name }));
   await createPair('tags', 'product-tags', 'product_tag', (value) => ({ value }));
   await createPair('types', 'product-types', 'product_type', (value) => ({ value }));
-  await createPair('channels', 'sales-channels', 'sales_channel', (name, index) => ({ name, is_disabled: index === 1 }));
+  await createPair('channels', 'sales-channels', 'sales_channel', (name, index) => ({
+    name: `Contract ${name}`, is_disabled: index === 1,
+  }));
   await createPair('regions', 'regions', 'region', (name, index) => ({ name, currency_code: 'usd', countries: [index ? 'ca' : 'us'] }));
   await createPair('customers', 'customers', 'customer', (name, index) => ({
     first_name: name, last_name: `${name}son`, email: `${name.toLowerCase()}@example.test`, phone: `555000000${index}`,
@@ -119,13 +121,6 @@ async function readTool(tool, args, key) {
 
 const afterFixture = { $gte: '2999-01-01T00:00:00Z' };
 const beforeFixture = { $gte: '2020-01-01T00:00:00Z' };
-const knownDeviations = {
-  'customers.list.phone': { rejects: /HTTP 400.*Unrecognized fields: 'phone'/ },
-  'draft_orders.list.email': { rejects: /HTTP 400.*Unrecognized fields: 'email'/ },
-  'sales_channels.list.name': { ignores: 'MCP omits name from the Admin API request' },
-  'sales_channels.list.is_disabled': { ignores: 'MCP omits is_disabled from the Admin API request' },
-  'pricing.list_promotions.status': { ignores: 'MCP omits status and Medusa does not accept it as a promotion list filter' },
-};
 
 const cases = [
   { tool: 'products', action: 'list', key: 'products', set: 'products', filters: [
@@ -159,8 +154,8 @@ const cases = [
   { tool: 'inventory', action: 'list_locations', key: 'stock_locations', set: 'locations', filters: [
     ['q', 'Mercury', missing], ['name', 'Mercury', missing],
   ] },
-  { tool: 'sales_channels', action: 'list', key: 'sales_channels', set: 'channels', filters: [
-    ['q', 'Mercury', missing], ['name', 'Mercury', missing], ['is_disabled', true, false, [1], [0]],
+  { tool: 'sales_channels', action: 'list', key: 'sales_channels', set: 'channels', scope: { q: 'Contract' }, filters: [
+    ['q', 'Mercury', missing], ['name', (a) => a.name, missing], ['is_disabled', true, false, [1], [0]],
   ] },
   { tool: 'regions', action: 'list_regions', key: 'regions', set: 'regions', filters: [['q', 'Mercury', missing]] },
   { tool: 'taxes', action: 'list_tax_rates', key: 'tax_rates', set: 'taxRates', filters: [
@@ -177,7 +172,7 @@ const cases = [
     ['q', () => fixtures.customers[0].email, missing],
     ['region_id', () => fixtures.regions[0].id, 'reg_missing'],
     ['customer_id', () => fixtures.customers[0].id, 'cus_missing'],
-    ['email', () => fixtures.customers[0].email, `${missing}@example.test`],
+    ['email', () => fixtures.customers[0].email.toUpperCase(), `${missing}@example.test`],
   ] },
   { tool: 'orders', action: 'list', key: 'orders', set: 'orders', filters: [
     ['q', () => fixtures.customers[0].email, missing],
@@ -190,33 +185,17 @@ const cases = [
   ] },
 ];
 
-for (const { tool, action, key, set, filters } of cases) {
+for (const { tool, action, key, set, scope, filters } of cases) {
   test(`${tool}.${action} contracts`, async (t) => {
     const records = fixtures[set];
-    const baseline = await readTool(tool, { action }, key);
+    const baseline = await readTool(tool, { action, ...scope }, key);
     for (const record of records) assert.ok(baseline.ids.includes(record.id), 'Unfiltered response must contain both fixtures');
     for (const [filter, matching, control, selected = [0], excluded = []] of filters) {
-      await t.test(filter, async (contract) => {
+      await t.test(filter, async () => {
         const input = typeof matching === 'function' ? matching(records[0]) : matching;
-        const read = (value) => readTool(tool, { action, [filter]: value }, key);
-        const deviation = knownDeviations[`${tool}.${action}.${filter}`];
-        if (deviation?.rejects) {
-          await assert.rejects(() => read(input), deviation.rejects);
-          await assert.rejects(() => read(control), deviation.rejects);
-          contract.todo('Known rejection in Medusa 2.22.1');
-          return;
-        }
-
+        const read = (value) => readTool(tool, { action, ...scope, [filter]: value }, key);
         const match = await read(input);
         const other = await read(control);
-        if (deviation?.ignores) {
-          // Only the exact known behavior is tolerated. Any change requires revisiting the entry.
-          assert.deepEqual(match, baseline, 'Known ignored filter changed for the matching input');
-          assert.deepEqual(other, baseline, 'Known ignored filter changed for the control input');
-          contract.todo(deviation.ignores);
-          return;
-        }
-
         const expected = (indexes) => ({ count: indexes.length, ids: indexes.map((index) => records[index].id).sort() });
         assert.deepEqual(match, expected(selected), `${filter} returned the wrong IDs for a matching value`);
         assert.deepEqual(other, expected(excluded), `${filter} returned the wrong IDs for its control value`);
@@ -224,3 +203,11 @@ for (const { tool, action, key, set, filters } of cases) {
     }
   });
 }
+
+test('exact customer phone composes with native filters and paginates the matches', async () => {
+  const [matching, other] = fixtures.customers;
+  const args = { action: 'list', phone: matching.phone, email: matching.email, limit: 1 };
+  assert.deepEqual(await readTool('customers', args, 'customers'), { count: 1, ids: [matching.id] });
+  assert.deepEqual(await readTool('customers', { ...args, offset: 1 }, 'customers'), { count: 1, ids: [] });
+  assert.deepEqual(await readTool('customers', { ...args, email: other.email }, 'customers'), { count: 0, ids: [] });
+});
