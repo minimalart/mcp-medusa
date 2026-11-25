@@ -183,7 +183,7 @@ async function deleteRegion(baseUrl, headers, args) {
 
 // Shipping Options operations
 async function listShippingOptions(baseUrl, headers, args) {
-  const query = { limit: args.limit ?? 20, offset: args.offset ?? 0, stock_location_id: args.stock_location_id };
+  const query = { limit: args.limit ?? 20, offset: args.offset ?? 0, stock_location_id: args.stock_location_id ?? args.location_id };
   const read = (parameters) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(parameters)) appendQueryParam(params, key, value);

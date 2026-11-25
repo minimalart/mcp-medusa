@@ -326,6 +326,7 @@ test('shipping option region and return filters compose across locations in a sh
     assert.deepEqual(await read({ region_id: regions[1].id }), shippingResult(b));
     assert.deepEqual(await read({ region_id: 'reg_contract_missing' }), shippingResult([]));
     assert.deepEqual(await read({ region_id: regions[1].id, stock_location_id: locations[0].id }), shippingResult([]));
+    assert.deepEqual(await read({ region_id: regions[0].id, location_id: locations[1].id }), shippingResult(b));
   });
   await t.test('is_return', async () => {
     assert.deepEqual(await read({ is_return: true }), shippingResult([a[1], b[1]]));
