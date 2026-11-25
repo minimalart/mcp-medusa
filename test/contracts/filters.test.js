@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { before, test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { discoverTools, executeToolOptimized } from '../../lib/tools.js';
@@ -9,6 +10,9 @@ const baseUrl = configuredUrl.origin;
 const missing = 'contract-no-such-8bc973';
 const admin = { email: 'contracts@example.test', password: 'local-contract-password' };
 const fixtures = {};
+const { Client } = createRequire(new URL('./medusa/package.json', import.meta.url))('pg');
+const disabledPayment = 'pp_contract_disabled';
+const disabledFulfillment = 'contract_disabled';
 let tools;
 let token;
 
@@ -34,6 +38,47 @@ async function createPair(key, path, entity, build) {
   fixtures[key] = records;
 }
 
+async function seedProviderRegistry() {
+  const database = new URL(process.env.CONTRACT_DATABASE_URL);
+  assert.ok(['127.0.0.1', 'localhost'].includes(database.hostname) && database.pathname === '/mcp_contracts',
+    'Provider fixtures require a disposable local database');
+  const db = new Client({ connectionString: database.href });
+  await db.connect();
+  try {
+    // The Admin API cannot register a disabled provider. Seed registry rows only;
+    // these IDs never initiate payments or call a carrier.
+    await db.query('insert into payment_provider (id, is_enabled) values ($1, false)', [disabledPayment]);
+    await db.query('insert into fulfillment_provider (id, is_enabled) values ($1, false)', [disabledFulfillment]);
+  } finally {
+    await db.end();
+  }
+}
+
+async function seedShippingOptions() {
+  const { fulfillment_providers } = await request('/admin/fulfillment-providers');
+  const manual = fulfillment_providers.find(({ id }) => id.startsWith('manual_'));
+  assert.ok(manual, 'The local manual fulfillment provider must be registered');
+  const { shipping_profile } = await request('/admin/shipping-profiles', { name: 'Contract profile', type: 'default' });
+  const locationId = fixtures.locations[0].id;
+  await request(`/admin/stock-locations/${locationId}/fulfillment-providers`, { add: [manual.id] });
+  const { stock_location } = await request(`/admin/stock-locations/${locationId}/fulfillment-sets?fields=id,fulfillment_sets.id`, {
+    name: 'Contract set', type: 'shipping',
+  });
+  const setId = stock_location.fulfillment_sets[0].id;
+  const { fulfillment_set } = await request(`/admin/fulfillment-sets/${setId}/service-zones?fields=id,service_zones.id`, {
+    name: 'Contract zone', geo_zones: [{ type: 'country', country_code: 'us' }],
+  });
+  const zoneId = fulfillment_set.service_zones[0].id;
+  await createPair('shippingOptions', 'shipping-options', 'shipping_option', (name, index) => ({
+    name, service_zone_id: zoneId, shipping_profile_id: shipping_profile.id, provider_id: manual.id,
+    price_type: 'flat', type: { label: `Contract ${name}`, code: `contract-${name.toLowerCase()}`, description: name },
+    prices: [{ currency_code: 'usd', amount: 1000 }],
+    rules: [{ attribute: 'is_return', operator: 'eq', value: String(index === 1) }],
+  }));
+  fixtures.shippingProviderId = manual.id;
+  fixtures.shippingZoneId = zoneId;
+}
+
 before(async () => {
   const deadline = Date.now() + 90000;
   while (true) {
@@ -52,6 +97,7 @@ before(async () => {
   process.env.MEDUSA_API_KEY = token;
   process.env.MEDUSA_AUTH_TYPE = 'jwt';
   tools = await discoverTools();
+  await seedProviderRegistry();
 
   await createPair('collections', 'collections', 'collection', (name) => ({ title: name, handle: `collection-${name.toLowerCase()}` }));
   await createPair('categories', 'product-categories', 'product_category', (name) => ({ name }));
@@ -77,6 +123,7 @@ before(async () => {
     title: name, sku: `stock-${name.toLowerCase()}`, origin_country: index ? 'ca' : 'us',
   }));
   await createPair('locations', 'stock-locations', 'stock_location', (name) => ({ name }));
+  await seedShippingOptions();
   await createPair('taxRegions', 'tax-regions', 'tax_region', (_name, index) => ({
     country_code: index ? 'ca' : 'us', provider_id: 'tp_system',
   }));
@@ -210,4 +257,71 @@ test('exact customer phone composes with native filters and paginates the matche
   assert.deepEqual(await readTool('customers', args, 'customers'), { count: 1, ids: [matching.id] });
   assert.deepEqual(await readTool('customers', { ...args, offset: 1 }, 'customers'), { count: 1, ids: [] });
   assert.deepEqual(await readTool('customers', { ...args, email: other.email }, 'customers'), { count: 0, ids: [] });
+});
+
+test('payment provider filters select an exact ID or enabled state', async () => {
+  const action = 'list_payment_providers';
+  const key = 'payment_providers';
+  const read = (filters) => readTool('payments', { action, ...filters }, key);
+  const baseline = await read({});
+  assert.ok(baseline.ids.includes(disabledPayment));
+  assert.ok(baseline.ids.includes('pp_system_default'));
+  assert.deepEqual(await read({ provider_id: 'pp_system_default' }), { count: 1, ids: ['pp_system_default'] });
+  assert.deepEqual(await read({ provider_id: 'pp_contract_missing' }), { count: 0, ids: [] });
+  assert.deepEqual(await read({ is_enabled: false }), { count: 1, ids: [disabledPayment] });
+  assert.deepEqual(await read({ is_enabled: true }), {
+    count: baseline.count - 1, ids: baseline.ids.filter((id) => id !== disabledPayment),
+  });
+});
+
+test('fulfillment provider ID and state select registry rows and provider-specific options', async () => {
+  const key = 'fulfillment_providers';
+  const baseline = await readTool('regions', { action: 'list_fulfillment_providers' }, key);
+  const manual = baseline.ids.find((id) => id.startsWith('manual_'));
+  assert.ok(manual && baseline.ids.includes(disabledFulfillment));
+  const read = (query) => readTool('v2', { action: 'request', method: 'GET', path: '/admin/fulfillment-providers', query }, key);
+  assert.deepEqual(await read({ id: manual }), { count: 1, ids: [manual] });
+  assert.deepEqual(await read({ id: 'contract_missing' }), { count: 0, ids: [] });
+  assert.deepEqual(await read({ is_enabled: false }), { count: 1, ids: [disabledFulfillment] });
+  assert.deepEqual(await read({ is_enabled: true }), {
+    count: baseline.count - 1, ids: baseline.ids.filter((id) => id !== disabledFulfillment),
+  });
+  const options = { action: 'list_fulfillment_provider_options', provider_id: manual };
+  assert.deepEqual(await readTool('regions', options, 'fulfillment_options'), {
+    count: 2, ids: ['manual-fulfillment', 'manual-fulfillment-return'],
+  });
+});
+
+test('tax provider list preserves the exact provider ID', async () => {
+  const read = (id) => readTool('v2', { action: 'list', resource: 'tax_providers', query: { id } }, 'tax_providers');
+  assert.deepEqual(await read('tp_system'), { count: 1, ids: ['tp_system'] });
+  assert.deepEqual(await read('tp_contract_missing'), { count: 0, ids: [] });
+});
+
+test('shipping options select the manual fulfillment provider, zone and stock location', async () => {
+  const read = (query) => readTool('v2', { action: 'request', method: 'GET', path: '/admin/shipping-options', query }, 'shipping_options');
+  const expected = { count: 2, ids: fixtures.shippingOptions.map(({ id }) => id).sort() };
+  for (const [filter, match, control] of [
+    ['provider_id', fixtures.shippingProviderId, disabledFulfillment],
+    ['service_zone_id', fixtures.shippingZoneId, 'serzo_contract_missing'],
+    ['stock_location_id', fixtures.locations[0].id, fixtures.locations[1].id],
+  ]) {
+    assert.deepEqual(await read({ [filter]: match }), expected, filter);
+    assert.deepEqual(await read({ [filter]: control }), { count: 0, ids: [] }, filter);
+  }
+});
+
+test('shipping-option audit measures region and return filters against mixed fixtures', async (t) => {
+  const read = (filters) => readTool('regions', { action: 'list_shipping_options', ...filters }, 'shipping_options');
+  const baseline = await read({});
+  assert.equal(baseline.count, 2);
+  await t.test('region_id', async (contract) => {
+    await assert.rejects(() => read({ region_id: 'reg_contract_missing' }), /HTTP 400.*Unrecognized fields: 'region_id'/);
+    contract.todo('Medusa 2.22.1 rejects region_id on /admin/shipping-options');
+  });
+  await t.test('is_return', async (contract) => {
+    await assert.rejects(() => read({ is_return: true }), /HTTP 500.*unknown_error/);
+    assert.deepEqual(await read({ is_return: false }), baseline);
+    contract.todo('Medusa 2.22.1 fails on true; the MCP omits false and returns both options');
+  });
 });
