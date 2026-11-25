@@ -39,6 +39,7 @@
     "start:do": "node server/index.js",
     "test:http": "node test-http-transport.js",
     "test:unit": "node --test test/unit/*.test.js",
+    "test:contracts": "node --test test/contracts/*.test.js",
     "coverage:medusa": "node scripts/medusa-openapi-coverage.js",
     "deploy": "vercel --prod",
     "type-check": "tsc --noEmit",

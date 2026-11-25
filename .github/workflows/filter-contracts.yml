@@ -1,0 +1,53 @@
+name: Medusa filter contracts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  filter-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: contracts
+          POSTGRES_DB: mcp_contracts
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mcp_contracts"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      CONTRACT_DATABASE_URL: postgres://postgres:contracts@127.0.0.1:5432/mcp_contracts
+      CONTRACT_MEDUSA_URL: http://127.0.0.1:9100
+      MEDUSA_DISABLE_TELEMETRY: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --no-audit --no-fund
+      - run: npm install --no-audit --no-fund --prefix test/contracts/medusa
+      - run: npm run test:unit
+      - name: Migrate the fixture and create its admin user
+        working-directory: test/contracts/medusa
+        run: |
+          npx --no-install medusa db:migrate
+          npx --no-install medusa user -e contracts@example.test -p local-contract-password
+      - name: Run the MCP contracts against Medusa
+        run: |
+          (cd test/contracts/medusa && exec ./node_modules/.bin/medusa start --host 127.0.0.1 --port 9100 --types) > medusa-contract.log 2>&1 &
+          medusa_pid=$!
+          trap 'kill "$medusa_pid" 2>/dev/null || true' EXIT
+          npm run test:contracts
+      - name: Print Medusa logs on failure
+        if: failure()
+        run: if test -f medusa-contract.log; then tail -100 medusa-contract.log; fi
