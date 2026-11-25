@@ -4,6 +4,7 @@
   "dependencies": {
     "@medusajs/cli": "2.22.1",
     "@medusajs/framework": "2.22.1",
-    "@medusajs/medusa": "2.22.1"
+    "@medusajs/medusa": "2.22.1",
+    "pg": "8.23.1"
   }
 }

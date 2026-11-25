@@ -14,7 +14,7 @@ import { createExtensionTool } from '../../lib/extension-resources.js';
 export const RESOURCES = {
   payment_benefits: {
     path: '/admin/payment-benefits',
-    summary: 'Beneficios de pago: cuotas/descuentos por banco o medio (query provider, status, type, source)',
+    summary: 'Beneficios de pago: cuotas/descuentos por banco o medio (query provider_code, status, benefit_type, source; provider y type son alias)',
     subActions: {
       catalog: { method: 'GET', path: '/catalog' },
       dashboard: { method: 'GET', path: '/dashboard' },
@@ -52,7 +52,16 @@ export const extensionResources = tool.resources;
 
 export const apiTool = {
   definition: tool.definition,
-  function: tool.function,
+  function(args) {
+    const query = args?.query;
+    if (args?.resource !== 'payment_benefits' || args.action !== 'list' || !query || typeof query !== 'object' || Array.isArray(query)) {
+      return tool.function(args);
+    }
+    const { provider, type, ...filters } = query;
+    if (filters.provider_code === undefined && provider !== undefined) filters.provider_code = provider;
+    if (filters.benefit_type === undefined && type !== undefined) filters.benefit_type = type;
+    return tool.function({ ...args, query: filters });
+  },
   // Rutas declaradas por resource: quien embebe el handler deriva de acá qué
   // permiso pide cada resource (filtro de tools por usuario).
   resources: tool.resources,
