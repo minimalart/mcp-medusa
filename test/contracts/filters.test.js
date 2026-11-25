@@ -353,7 +353,8 @@ test('shared-region order, draft and catalog selectors paginate within each sale
         title: `Multistore contract ${index}-${row}`, handle: `multistore-contract-${index}-${row}`,
         status: 'published', sales_channels: [{ id: channel.id }],
         options: [{ title: 'Size', values: ['Standard'] }],
-        variants: [{ title: 'Standard', manage_inventory: false, options: { Size: 'Standard' } }],
+        variants: [{ title: 'Standard', manage_inventory: false, options: { Size: 'Standard' },
+          prices: [{ currency_code: 'usd', amount: 1000 }] }],
       });
       records.product.push(product);
       const input = {
