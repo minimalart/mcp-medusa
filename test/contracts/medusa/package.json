@@ -1,0 +1,9 @@
+{
+  "name": "mcp-medusa-contract-fixture",
+  "private": true,
+  "dependencies": {
+    "@medusajs/cli": "2.22.1",
+    "@medusajs/framework": "2.22.1",
+    "@medusajs/medusa": "2.22.1"
+  }
+}
