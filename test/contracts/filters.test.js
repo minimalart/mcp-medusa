@@ -371,21 +371,18 @@ test('shared-region order, draft and catalog selectors paginate within each sale
   }
 
   const variants = [
-    { tool: 'orders', key: 'orders', entity: 'order', query: { region_id: regionId, email: customer.email, status: 'pending' },
-      exclude: { email: `${missing}@example.test` } },
-    { tool: 'draft_orders', key: 'draft_orders', entity: 'draft_order', query: { region_id: regionId, email: customer.email },
-      exclude: { email: `${missing}@example.test` } },
-    { tool: 'v2', key: 'products', entity: 'product', action: 'request', path: '/admin/products',
+    { key: 'orders', entity: 'order', path: '/admin/orders', query: { region_id: regionId, customer_id: customer.id, status: 'pending' },
+      exclude: { customer_id: missing } },
+    { key: 'draft_orders', entity: 'draft_order', path: '/admin/draft-orders', query: { region_id: regionId, customer_id: customer.id },
+      exclude: { customer_id: missing } },
+    { key: 'products', entity: 'product', path: '/admin/products',
       query: { q: 'Multistore contract', status: ['published'] }, exclude: { status: ['draft'] } },
   ];
-  for (const { tool, key, entity, action = 'list', path, query, exclude } of variants) {
+  for (const { key, entity, path, query, exclude } of variants) {
     await t.test(key, async () => {
       for (const [index, channel] of channels.entries()) {
         const filters = { ...query, sales_channel_id: [channel.id] };
-        const read = (overrides) => {
-          const args = { ...filters, ...overrides };
-          return readTool(tool, path ? { action, path, method: 'GET', query: args } : { action, ...args }, key);
-        };
+        const read = (overrides) => readTool('v2', { action: 'request', path, method: 'GET', query: { ...filters, ...overrides } }, key);
         const expected = { count: 2, ids: recordsByChannel[index][entity].map(({ id }) => id).sort() };
         assert.deepEqual(await read({}), expected);
         const ids = [];
