@@ -10,6 +10,8 @@ The core filter assertions are strict. Sales channel `name` and `is_disabled` mu
 
 The shipping-option contracts cover `region_id` by matching countries in the region to geo zones, and `is_return` by checking the option rules for both boolean values. Two stock locations share a region and have distinct controls. The region filter can return both locations, and `stock_location_id` restricts the request to the selected location. The dedicated tool checks zero matches and pagination after filtering. The provider, service zone and stock location filters are also checked through `manage_medusa_admin_v2` on `/admin/shipping-options`.
 
+The multistore fixture models two sales channels in one Medusa instance. It shares a region and customer across both channels and creates separate products, orders, and drafts. Contracts check the full intersection, each one-record page, the unchanged filtered total on an empty page, and incompatible filters. Brick's `x-site-id` behavior is covered in its own extension suite.
+
 ## Running locally
 
 Use an empty PostgreSQL 16 database named `mcp_contracts`. The workflow contains the exact migration, local admin creation and startup commands. With the fixture running on `http://127.0.0.1:9100`, run `npm run test:contracts` from the repository root. Use a fresh database each time because the suite creates records through the Admin API. To use a different local port, set `CONTRACT_MEDUSA_URL`.

@@ -339,3 +339,63 @@ test('shipping option region and return filters compose across locations in a sh
     }
   });
 });
+
+test('shared-region order, draft and catalog selectors paginate within each sales channel', async (t) => {
+  const { sales_channel: secondChannel } = await request('/admin/sales-channels', { name: 'Contract multistore B' });
+  const channels = [fixtures.channels[0], secondChannel];
+  const { customer } = await request('/admin/customers', { email: 'shared-store-contract@example.test' });
+  const regionId = fixtures.regions[0].id;
+  const recordsByChannel = [];
+  for (const [index, channel] of channels.entries()) {
+    const records = { order: [], draft_order: [], product: [] };
+    for (let row = 0; row < 2; row += 1) {
+      const { product } = await request('/admin/products', {
+        title: `Multistore contract ${index}-${row}`, handle: `multistore-contract-${index}-${row}`,
+        status: 'published', sales_channels: [{ id: channel.id }],
+        options: [{ title: 'Size', values: ['Standard'] }],
+        variants: [{ title: 'Standard', manage_inventory: false, options: { Size: 'Standard' },
+          prices: [{ currency_code: 'usd', amount: 1000 }] }],
+      });
+      records.product.push(product);
+      const input = {
+        region_id: regionId, sales_channel_id: channel.id, customer_id: customer.id, email: customer.email,
+        items: [{ title: `Multistore contract ${index}-${row}`, unit_price: 1000, quantity: 1 }],
+      };
+      const { draft_order: { id } } = await request('/admin/draft-orders', input);
+      const { order } = await request(`/admin/draft-orders/${id}/convert-to-order`, {});
+      const { draft_order } = await request('/admin/draft-orders', input);
+      records.order.push(order);
+      records.draft_order.push(draft_order);
+    }
+    recordsByChannel.push(records);
+  }
+
+  const variants = [
+    { key: 'orders', entity: 'order', path: '/admin/orders', query: { region_id: regionId, customer_id: customer.id, status: 'pending' },
+      exclude: { customer_id: missing } },
+    { key: 'draft_orders', entity: 'draft_order', path: '/admin/draft-orders', query: { region_id: regionId, customer_id: customer.id },
+      exclude: { customer_id: missing } },
+    { key: 'products', entity: 'product', path: '/admin/products',
+      query: { q: 'Multistore contract', status: ['published'] }, exclude: { status: ['draft'] } },
+  ];
+  for (const { key, entity, path, query, exclude } of variants) {
+    await t.test(key, async () => {
+      for (const [index, channel] of channels.entries()) {
+        const filters = { ...query, sales_channel_id: [channel.id] };
+        const read = (overrides) => readTool('v2', { action: 'request', path, method: 'GET', query: { ...filters, ...overrides } }, key);
+        const expected = { count: 2, ids: recordsByChannel[index][entity].map(({ id }) => id).sort() };
+        assert.deepEqual(await read({}), expected);
+        const ids = [];
+        for (let offset = 0; offset < expected.count; offset += 1) {
+          const page = await read({ limit: 1, offset });
+          assert.equal(page.count, expected.count);
+          assert.equal(page.ids.length, 1);
+          ids.push(...page.ids);
+        }
+        assert.deepEqual(ids.sort(), expected.ids);
+        assert.deepEqual(await read({ limit: 1, offset: expected.count }), { count: expected.count, ids: [] });
+        assert.deepEqual(await read(exclude), { count: 0, ids: [] });
+      }
+    });
+  }
+});
