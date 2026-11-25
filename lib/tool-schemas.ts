@@ -100,7 +100,7 @@ export const DraftOrdersSchema = z.object({
   q: z.string().optional().describe('Query string for search.'),
   fields: z.string().optional().describe('Fields selector for get/list/convert_to_order.'),
   status: z.string().optional().describe('Draft order status on create (only "completed").'),
-  email: z.string().optional().describe('Customer email.'),
+  email: z.string().optional().describe('Customer email; list matches the draft email exactly, ignoring case.'),
   customer_id: z.string().optional().describe('Customer ID.'),
   region_id: z.string().optional().describe('Region ID (required for create).'),
   sales_channel_id: z.string().optional().describe('Sales channel ID.'),
@@ -226,7 +226,7 @@ export const CustomersSchema = z.object({
   email: z.string().optional().describe('Customer email address.'),
   first_name: z.string().optional().describe('Customer first name.'),
   last_name: z.string().optional().describe('Customer last name.'),
-  phone: z.string().optional().describe('Customer phone number.'),
+  phone: z.string().optional().describe('Customer phone number; list matches it exactly.'),
   address_id: z.string().optional().describe('Address ID (required for address-specific operations).'),
   address_data: z.record(z.string(), z.any()).optional().describe('Address data for create/update operations.'),
   group_id: z.string().optional().describe('Customer group ID (required for group operations).'),
@@ -510,9 +510,9 @@ export const SalesChannelsSchema = z.object({
   action: z.enum(['list', 'get', 'create', 'update', 'delete', 'add_products', 'remove_products', 'list_products'])
     .describe('The action to perform on sales channels.'),
   id: z.string().optional().describe('Sales channel ID.'),
-  name: z.string().optional().describe('Sales channel name.'),
+  name: z.string().optional().describe('Sales channel name; list matches it exactly.'),
   description: z.string().optional().describe('Sales channel description.'),
-  is_disabled: z.boolean().optional().describe('Whether channel is disabled.'),
+  is_disabled: z.boolean().optional().describe('Whether channel is disabled; list accepts true or false as a filter.'),
   product_ids: z.array(z.string()).optional().describe('Product IDs to add/remove.'),
 }).merge(BaseListSchema).merge(BaseMetadataSchema);
 

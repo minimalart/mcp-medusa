@@ -19,6 +19,7 @@
 
 import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
 import { sentGatedFields, withGatedFields, withMedusaErrorHints } from "../../lib/medusa-version.js";
+import { listByExactField } from "../../lib/medusa-list-filter.js";
 
 // metadata en promociones existe desde Medusa 2.21 (en 2.18 el validador estricto lo rechaza):
 // sólo se envía si el caller lo pasa y un 400 "Unrecognized fields" se traduce a mensaje de versión.
@@ -162,14 +163,14 @@ async function deletePriceList(baseUrl, headers, args) {
 
 // Promotions operations
 async function listPromotions(baseUrl, headers, args) {
-  const params = new URLSearchParams();
-  if (args.limit) params.append('limit', args.limit.toString());
-  if (args.offset) params.append('offset', args.offset.toString());
-  if (args.q) params.append('q', args.q);
-  appendQueryParam(params, 'code', args.code);
+  const { limit, offset, q, code, status } = args;
+  const query = { limit, offset, q, code };
+  const read = (params) => makeRequest(withQuery(`${baseUrl}/admin/promotions`, params), { headers });
+  if (status === undefined) return await read(query);
 
-  const url = `${baseUrl}/admin/promotions?${params.toString()}`;
-  return await makeRequest(url, { headers });
+  return await listByExactField({
+    read, query, key: 'promotions', field: 'status', matches: (value) => value === status,
+  });
 }
 
 async function getPromotion(baseUrl, headers, args) {
@@ -584,7 +585,7 @@ export const apiTool = {
         status: {
           type: 'string',
           enum: ['draft', 'active', 'inactive'],
-          description: 'Promotion or price list status.'
+          description: 'Promotion or price list status; list_promotions matches it exactly.'
         },
         prices: { type: 'array', description: 'Price list prices.' },
         customer_groups: { type: 'array', description: 'Customer groups.' },

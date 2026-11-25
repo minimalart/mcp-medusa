@@ -22,7 +22,8 @@
  * Todas estas rutas existen desde Medusa 2.17.2 (incluida 2.18.0).
  */
 
-import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { appendQueryParam, createHeaders, createQueryParams, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { listByExactField } from "../../lib/medusa-list-filter.js";
 import { withMedusaErrorHints } from "../../lib/medusa-version.js";
 
 function getDraftOrderConfig() {
@@ -115,19 +116,20 @@ const listDraftOrders = async (args = {}) => {
   if (config.error) return config;
 
   try {
-    const url = new URL(`${config.baseUrl}/admin/draft-orders`);
-
-    // Add query parameters
-    Object.entries(args).forEach(([key, value]) => {
-      appendQueryParam(url.searchParams, key, value);
-    });
-
-    const data = await makeRequest(url.toString(), {
+    const { email, ...query } = args;
+    const read = (params) => makeRequest(`${config.baseUrl}/admin/draft-orders?${createQueryParams(params)}`, {
       method: 'GET',
       headers: createHeaders(config.apiKey)
     });
+    if (email === undefined) return await read(query);
 
-    return data;
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return { error: 'email must not be empty.' };
+    return await listByExactField({
+      read, query, key: 'draft_orders', field: 'email',
+      candidateQuery: { q: query.q || normalizedEmail },
+      matches: (value) => value?.toLowerCase() === normalizedEmail,
+    });
   } catch (error) {
     console.error('Error listing draft orders:', error);
     return { error: `An error occurred while listing draft orders: ${error.message}` };
@@ -669,7 +671,7 @@ const apiTool = {
           },
           email: {
             type: 'string',
-            description: 'Customer email (create/update). On create, email or customer_id is required.'
+            description: 'Customer email. List matches the draft email exactly, ignoring case. On create, email or customer_id is required.'
           },
           customer_id: {
             type: 'string',

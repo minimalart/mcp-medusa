@@ -6,16 +6,7 @@ The matrix in `filters.test.js` is the coverage inventory. Each contract checks 
 
 The fixture runs stock Medusa. Brick-only extensions, tenant scoping and provider-dependent lists need their own fixtures. The order cart-link and tax-line variants of the earlier filter fixes still have unit coverage. The suite does not generate live orders, notifications, or payments.
 
-## Known deviations on Medusa 2.22.1
-
-| MCP action | Input | Observed behavior |
-| --- | --- | --- |
-| `sales_channels.list` | `name`, `is_disabled` | The MCP omits the arguments. Medusa supports them and the MCP returns the unfiltered list with HTTP 200. |
-| `pricing.list_promotions` | `status` | The MCP omits the argument and returns the unfiltered list with HTTP 200. The upstream route does not accept a status filter. |
-| `customers.list` | `phone` | The upstream route rejects the argument with HTTP 400. |
-| `draft_orders.list` | `email` | The upstream route rejects the argument with HTTP 400. |
-
-The tests label these specific results as TODO. Any change from the recorded outcome fails the check so the entry must be revisited. All other entries are strict assertions.
+All contracts are strict assertions. In particular, the sales channel `name` and `is_disabled` filters must reach Medusa. Promotion `status`, customer `phone` and draft order `email` must still filter the API response correctly when Medusa does not accept the parameter directly.
 
 ## Running locally
 

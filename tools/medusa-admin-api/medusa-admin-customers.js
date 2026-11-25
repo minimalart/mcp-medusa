@@ -3,7 +3,8 @@
  * Supports CRUD operations for customers, customer groups, and addresses
  */
 
-import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { createHeaders, createQueryParams, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { listByExactField } from "../../lib/medusa-list-filter.js";
 
 /**
  * Main function to handle all customer-related operations.
@@ -100,19 +101,16 @@ async function updateCustomerGroups(baseUrl, headers, args) {
 
 // Customer operations
 async function listCustomers(baseUrl, headers, args) {
-  const params = new URLSearchParams();
-  if (args.limit) params.append('limit', args.limit.toString());
-  if (args.offset) params.append('offset', args.offset.toString());
-  if (args.q) params.append('q', args.q);
-  if (args.email) params.append('email', args.email);
-  if (args.first_name) params.append('first_name', args.first_name);
-  if (args.last_name) params.append('last_name', args.last_name);
-  if (args.phone) params.append('phone', args.phone);
-  appendQueryParam(params, 'created_at', args.created_at);
-  appendQueryParam(params, 'updated_at', args.updated_at);
+  const { limit, offset, q, email, first_name, last_name, created_at, updated_at, phone } = args;
+  const query = { limit, offset, q, email, first_name, last_name, created_at, updated_at };
+  const read = (params) => makeRequest(`${baseUrl}/admin/customers?${createQueryParams(params)}`, { headers });
+  if (phone === undefined) return await read(query);
 
-  const url = `${baseUrl}/admin/customers?${params.toString()}`;
-  return await makeRequest(url, { headers });
+  const normalizedPhone = phone.trim();
+  if (!normalizedPhone) return { error: 'phone must not be empty.' };
+  return await listByExactField({
+    read, query, key: 'customers', field: 'phone', matches: (value) => value?.trim() === normalizedPhone,
+  });
 }
 
 async function getCustomer(baseUrl, headers, args) {
@@ -355,7 +353,7 @@ export const apiTool = {
         },
         phone: {
           type: 'string',
-          description: 'Customer phone number.'
+          description: 'Customer phone number; list matches it exactly.'
         },
         metadata: {
           type: 'object',
