@@ -17,7 +17,8 @@
  *   POST   /admin/shipping-options/{id}/rules/batch                 { create, update, delete }
  */
 
-import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { appendQueryParam, createHeaders, hasMedusaCredentials, makeRequest, MedusaClientError, missingCredentialsMessage, normalizeBaseUrl } from "../../lib/medusa-client.js";
+import { listByPredicate } from "../../lib/medusa-list-filter.js";
 import { withMedusaErrorHints } from "../../lib/medusa-version.js";
 
 const REMOVED_ACTIONS = {
@@ -182,14 +183,50 @@ async function deleteRegion(baseUrl, headers, args) {
 
 // Shipping Options operations
 async function listShippingOptions(baseUrl, headers, args) {
-  const params = new URLSearchParams();
-  if (args.limit) params.append('limit', args.limit.toString());
-  if (args.offset) params.append('offset', args.offset.toString());
-  if (args.region_id) params.append('region_id', args.region_id);
-  if (args.is_return) params.append('is_return', args.is_return.toString());
+  const query = { limit: args.limit ?? 20, offset: args.offset ?? 0, stock_location_id: args.stock_location_id };
+  const read = (parameters) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(parameters)) appendQueryParam(params, key, value);
+    return makeRequest(`${baseUrl}/admin/shipping-options?${params}`, { headers });
+  };
+  if (!args.region_id && args.is_return === undefined) return read(query);
 
-  const url = `${baseUrl}/admin/shipping-options?${params.toString()}`;
-  return await makeRequest(url, { headers });
+  let countries;
+  if (args.region_id) {
+    const empty = { shipping_options: [], count: 0, limit: query.limit, offset: query.offset };
+    try {
+      const { region } = await makeRequest(`${baseUrl}/admin/regions/${encodeURIComponent(args.region_id)}?fields=id,*countries`, { headers });
+      if (!Array.isArray(region?.countries)) throw new Error('Medusa omitted the region countries.');
+      countries = new Set(region.countries.map(({ iso_2 }) => iso_2.toLowerCase()));
+    } catch (error) {
+      if (error instanceof MedusaClientError && error.status === 404) return empty;
+      throw error;
+    }
+    if (!countries.size) return empty;
+  }
+
+  return listByPredicate({
+    read, query, key: 'shipping_options',
+    fields: [countries && '*service_zone.geo_zones', args.is_return !== undefined && '*rules'].filter(Boolean).join(','),
+    matches: (option) => (!countries || option.service_zone?.geo_zones?.some(({ country_code }) => countries.has(country_code.toLowerCase())))
+      && (args.is_return === undefined || matchesReturnRule(option.rules, args.is_return)),
+  });
+}
+
+function matchesReturnRule(rules, isReturn) {
+  if (!Array.isArray(rules)) throw new Error('Medusa omitted shipping option rules.');
+  const returnRules = rules.filter(({ attribute }) => attribute === 'is_return');
+  if (!returnRules.length) return !isReturn;
+  const context = String(isReturn);
+  return returnRules.every(({ operator, value }) => {
+    switch (operator) {
+      case 'eq': return String(value) === context;
+      case 'ne': return String(value) !== context;
+      case 'in': return Array.isArray(value) && value.map(String).includes(context);
+      case 'nin': return Array.isArray(value) && !value.map(String).includes(context);
+      default: return false;
+    }
+  });
 }
 
 async function getShippingOption(baseUrl, headers, args) {
@@ -534,7 +571,8 @@ export const apiTool = {
         tax_rate: { type: 'number', description: 'Tax rate.' },
         tax_code: { type: 'string', description: 'Tax code.' },
         includes_tax: { type: 'boolean', description: 'Whether prices include tax.' },
-        region_id: { type: 'string', description: 'Region ID for shipping options.' },
+        region_id: { type: 'string', description: 'List shipping options whose service zones cover a country in this region.' },
+        stock_location_id: { type: 'string', description: 'Limit shipping options to this stock location, including when stores share a region.' },
         provider_id: { type: 'string', description: 'Provider ID.' },
         price_type: { type: 'string', description: 'Price type (flat, calculated).' },
         amount: { type: 'number', description: 'Price amount.' },

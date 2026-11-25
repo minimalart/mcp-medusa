@@ -8,7 +8,7 @@ The fixture runs stock Medusa. It covers payment-provider ID and enabled state, 
 
 The core filter assertions are strict. Sales channel `name` and `is_disabled` must reach Medusa. Promotion `status`, customer `phone` and draft order `email` must filter correctly even when Medusa cannot accept the parameter directly.
 
-Two new shipping-option discrepancies are tracked as TODO after checking the exact observed behavior. `region_id` is rejected with HTTP 400. `is_return: true` returns HTTP 500 on Medusa 2.22.1, and `is_return: false` is omitted by the tool so the request returns both options with HTTP 200. A change in either recorded outcome fails CI for review. The provider, service zone and stock location filters are available through `manage_medusa_admin_v2` on `/admin/shipping-options` and checked strictly.
+The shipping-option contracts cover `region_id` by matching countries in the region to geo zones, and `is_return` by checking the option rules for both boolean values. Two stock locations share a region and have distinct controls. The region filter can return both locations, and `stock_location_id` restricts the request to the selected location. The dedicated tool checks zero matches and pagination after filtering. The provider, service zone and stock location filters are also checked through `manage_medusa_admin_v2` on `/admin/shipping-options`.
 
 ## Running locally
 

@@ -59,24 +59,27 @@ async function seedShippingOptions() {
   const manual = fulfillment_providers.find(({ id }) => id.startsWith('manual_'));
   assert.ok(manual, 'The local manual fulfillment provider must be registered');
   const { shipping_profile } = await request('/admin/shipping-profiles', { name: 'Contract profile', type: 'default' });
-  const locationId = fixtures.locations[0].id;
-  await request(`/admin/stock-locations/${locationId}/fulfillment-providers`, { add: [manual.id] });
-  const { stock_location } = await request(`/admin/stock-locations/${locationId}/fulfillment-sets?fields=id,fulfillment_sets.id`, {
-    name: 'Contract set', type: 'shipping',
-  });
-  const setId = stock_location.fulfillment_sets[0].id;
-  const { fulfillment_set } = await request(`/admin/fulfillment-sets/${setId}/service-zones?fields=id,service_zones.id`, {
-    name: 'Contract zone', geo_zones: [{ type: 'country', country_code: 'us' }],
-  });
-  const zoneId = fulfillment_set.service_zones[0].id;
-  await createPair('shippingOptions', 'shipping-options', 'shipping_option', (name, index) => ({
-    name, service_zone_id: zoneId, shipping_profile_id: shipping_profile.id, provider_id: manual.id,
-    price_type: 'flat', type: { label: `Contract ${name}`, code: `contract-${name.toLowerCase()}`, description: name },
-    prices: [{ currency_code: 'usd', amount: 1000 }],
-    rules: [{ attribute: 'is_return', operator: 'eq', value: String(index === 1) }],
-  }));
+  fixtures.shippingZones = [];
+  for (const [store, location] of fixtures.locations.entries()) {
+    await request(`/admin/stock-locations/${location.id}/fulfillment-providers`, { add: [manual.id] });
+    const { stock_location } = await request(`/admin/stock-locations/${location.id}/fulfillment-sets?fields=id,fulfillment_sets.id`, {
+      name: `Contract set ${store}`, type: 'shipping',
+    });
+    const setId = stock_location.fulfillment_sets[0].id;
+    const { fulfillment_set } = await request(`/admin/fulfillment-sets/${setId}/service-zones?fields=id,service_zones.id`, {
+      name: `Contract zone ${store}`,
+      geo_zones: (store === 0 ? ['us'] : ['us', 'ca']).map((country_code) => ({ type: 'country', country_code })),
+    });
+    const zoneId = fulfillment_set.service_zones[0].id;
+    fixtures.shippingZones.push(zoneId);
+    await createPair(`shippingOptions${store}`, 'shipping-options', 'shipping_option', (name, index) => ({
+      name, service_zone_id: zoneId, shipping_profile_id: shipping_profile.id, provider_id: manual.id,
+      price_type: 'flat', type: { label: `Contract ${name} ${store}`, code: `contract-${name.toLowerCase()}-${store}`, description: name },
+      prices: [{ currency_code: 'usd', amount: 1000 }],
+      rules: [{ attribute: 'is_return', operator: 'eq', value: String(index === 1) }],
+    }));
+  }
   fixtures.shippingProviderId = manual.id;
-  fixtures.shippingZoneId = zoneId;
 }
 
 before(async () => {
@@ -300,28 +303,38 @@ test('tax provider list preserves the exact provider ID', async () => {
 
 test('shipping options select the manual fulfillment provider, zone and stock location', async () => {
   const read = (query) => readTool('v2', { action: 'request', method: 'GET', path: '/admin/shipping-options', query }, 'shipping_options');
-  const expected = { count: 2, ids: fixtures.shippingOptions.map(({ id }) => id).sort() };
-  for (const [filter, match, control] of [
-    ['provider_id', fixtures.shippingProviderId, disabledFulfillment],
-    ['service_zone_id', fixtures.shippingZoneId, 'serzo_contract_missing'],
-    ['stock_location_id', fixtures.locations[0].id, fixtures.locations[1].id],
+  const { shippingOptions0: a, shippingOptions1: b } = fixtures;
+  for (const [filter, match, expected, control] of [
+    ['provider_id', fixtures.shippingProviderId, [...a, ...b], disabledFulfillment],
+    ['service_zone_id', fixtures.shippingZones[0], a, 'serzo_contract_missing'],
+    ['stock_location_id', fixtures.locations[0].id, a, 'sloc_contract_missing'],
+    ['stock_location_id', fixtures.locations[1].id, b, 'sloc_contract_missing'],
   ]) {
-    assert.deepEqual(await read({ [filter]: match }), expected, filter);
+    assert.deepEqual(await read({ [filter]: match }), shippingResult(expected), filter);
     assert.deepEqual(await read({ [filter]: control }), { count: 0, ids: [] }, filter);
   }
 });
 
-test('shipping-option audit measures region and return filters against mixed fixtures', async (t) => {
+const shippingResult = (options) => ({ count: options.length, ids: options.map(({ id }) => id).sort() });
+
+test('shipping option region and return filters compose across locations in a shared region', async (t) => {
   const read = (filters) => readTool('regions', { action: 'list_shipping_options', ...filters }, 'shipping_options');
-  const baseline = await read({});
-  assert.equal(baseline.count, 2);
-  await t.test('region_id', async (contract) => {
-    await assert.rejects(() => read({ region_id: 'reg_contract_missing' }), /HTTP 400.*Unrecognized fields: 'region_id'/);
-    contract.todo('Medusa 2.22.1 rejects region_id on /admin/shipping-options');
+  const { shippingOptions0: a, shippingOptions1: b, regions, locations } = fixtures;
+  assert.deepEqual(await read({}), shippingResult([...a, ...b]));
+  await t.test('region_id', async () => {
+    assert.deepEqual(await read({ region_id: regions[0].id }), shippingResult([...a, ...b]));
+    assert.deepEqual(await read({ region_id: regions[1].id }), shippingResult(b));
+    assert.deepEqual(await read({ region_id: 'reg_contract_missing' }), shippingResult([]));
+    assert.deepEqual(await read({ region_id: regions[1].id, stock_location_id: locations[0].id }), shippingResult([]));
   });
-  await t.test('is_return', async (contract) => {
-    await assert.rejects(() => read({ is_return: true }), /HTTP 500.*unknown_error/);
-    assert.deepEqual(await read({ is_return: false }), baseline);
-    contract.todo('Medusa 2.22.1 fails on true; the MCP omits false and returns both options');
+  await t.test('is_return', async () => {
+    assert.deepEqual(await read({ is_return: true }), shippingResult([a[1], b[1]]));
+    assert.deepEqual(await read({ is_return: false }), shippingResult([a[0], b[0]]));
+    for (const [index, options] of [a, b].entries()) {
+      const scope = { region_id: regions[0].id, stock_location_id: locations[index].id };
+      assert.deepEqual(await read({ ...scope, is_return: false }), shippingResult([options[0]]));
+      assert.deepEqual(await read({ ...scope, is_return: true }), shippingResult([options[1]]));
+      assert.deepEqual(await read({ ...scope, is_return: true, limit: 1, offset: 1 }), { count: 1, ids: [] });
+    }
   });
 });
