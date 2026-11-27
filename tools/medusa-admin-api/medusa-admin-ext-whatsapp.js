@@ -59,6 +59,32 @@ export const RESOURCES = {
       restore_version: { method: 'POST', path: '/versions/{id}/restore' },
     },
   },
+  whatsapp_automations: {
+    path: '/admin/whatsapp-automations',
+    summary: 'Avisos automáticos de saldo de cuenta corriente a empresas B2B',
+    notes:
+      'body {name, enabled?, condition, schedule, recipients, timezone? (ej. America/Argentina/Buenos_Aires), min_interval_hours?, max_balance_age_hours?}. condition: {type:"positive"} | {type:"gt"|"gte"|"crossed", amount}. schedule: {type:"once", date:"YYYY-MM-DD", hour, minute?} | {type:"weekly"|"monthly"|"every_n_days", ...} | {type:"on_threshold"}. recipients: {type:"all"} | {type:"companies", company_ids:[...]}. Le llega a los usuarios de esas empresas con "recibir avisos" y WhatsApp; no se eligen personas sueltas. Nace apagada salvo enabled:true.',
+    opConfig: {
+      create: { method: 'POST', impact: 'high', note: 'Con enabled:true manda WhatsApp reales a la hora indicada. Revisá antes recipients_preview.' },
+      update: { method: 'POST', path: '/{id}', impact: 'high', note: 'Cambiar destinatarios, horario o prenderla tiene efecto sobre envíos reales.' },
+      delete: { method: 'DELETE', path: '/{id}', impact: 'high' },
+    },
+    subActions: {
+      readiness: {
+        method: 'GET',
+        path: '/readiness',
+        note: 'Qué le falta a la tienda para avisar: bot, plantilla publicada y automatizaciones prendidas.',
+      },
+      sends: { method: 'GET', path: '/sends', note: 'Historial de envíos. query {automation_id, status, company_id} + limit/offset.' },
+      recipients_preview: {
+        method: 'POST',
+        path: '/recipients-preview',
+        mutating: false,
+        requires: ['body.recipients'],
+        note: 'A quiénes les llegaría: body {recipients, condition?}. Devuelve empresas, usuarios autorizados, si cumplen hoy la condición y unreachable_company_ids (empresas elegidas sin nadie a quien avisar). No crea ni manda nada, pero pide permiso de escritura sobre WhatsApp (muestra teléfonos y saldos).',
+      },
+    },
+  },
   whatsapp_conversations: {
     path: '/admin/whatsapp-conversations',
     ops: ['list'],
@@ -102,7 +128,7 @@ export const RESOURCES = {
 const tool = createExtensionTool({
   name: 'manage_minimalart_whatsapp',
   intro:
-    'WHATSAPP del backoffice (Kapso): templates de Meta, bindings de notificaciones, bot (canales, encendido, botón flotante), recorridos del bot, conversaciones, sesiones, analítica y asesor. Chat web del storefront: manage_minimalart_chatbot.',
+    'WHATSAPP del backoffice (Kapso): templates de Meta, bindings de notificaciones, bot (canales, encendido, botón flotante), recorridos del bot, conversaciones, sesiones, analítica, asesor y avisos automáticos de saldo. Chat web del storefront: manage_minimalart_chatbot.',
   resources: RESOURCES,
 });
 

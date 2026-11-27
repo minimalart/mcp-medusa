@@ -85,6 +85,17 @@ export const RESOURCES = {
       },
       run_stock_sync: { method: 'POST', path: '/stock-sync/run', impact: 'high', note: 'Pisa stock con el del ERP (202).' },
       price_lists: { method: 'GET', path: '/price-lists' },
+      customer_balances: {
+        method: 'GET',
+        path: '/customer-balances',
+        note: 'Saldos de cuenta corriente de los clientes en el ERP. query {q, only_debt, missing} + limit (máx 100)/offset.',
+      },
+      run_customer_balance_sync: {
+        method: 'POST',
+        path: '/customer-balance-sync/run',
+        impact: 'high',
+        note: 'Trae los saldos del ERP ahora (202 con sync_log_id). Puede crear empresas y disparar avisos por cruce de umbral.',
+      },
       unregistered_orders: { method: 'GET', path: '/unregistered-orders', note: 'Órdenes no registradas en el ERP.' },
       get_order: { method: 'GET', path: '/orders/{id}', note: 'Estado ERP de una orden (id = order_id).' },
       order_stock_by_location: { method: 'GET', path: '/orders/{id}/stock-by-location' },

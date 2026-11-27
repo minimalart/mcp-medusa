@@ -219,9 +219,43 @@ export const RESOURCES = {
         note: 'Registra un movimiento de dinero en la cuenta corriente.',
       },
       set_customer_group: { method: 'POST', path: '/{id}/customer-group' },
+      member_events: {
+        method: 'GET',
+        path: '/{id}/members/{child_id}/events',
+        note: 'Historial de cambios de WhatsApp y permisos de un usuario (child_id = memberId).',
+      },
+      import_members_preview: {
+        method: 'POST',
+        path: '/admin/b2b/member-imports/preview',
+        mutating: false,
+        requires: ['body.rows'],
+        note: 'Qué pasaría con cada fila, sin escribir. body {rows:[{erp_customer_id, first_name, last_name?, email?, whatsapp?, role? (consulta|comprador|administrador), can_view_balance?, can_receive_notifications?}]} (hasta 2000). Cada fila necesita nombre y email o WhatsApp. Estados: create, update, unchanged, incomplete, duplicate, company_not_found, conflict.',
+      },
+      import_members: {
+        method: 'POST',
+        path: '/admin/b2b/member-imports/apply',
+        impact: 'high',
+        requires: ['body.rows'],
+        note: 'Carga las filas válidas (mismo body que import_members_preview) y devuelve el resultado por fila. Crea contactos sin acceso al portal: no manda invitaciones ni avisos. Repetir el lote no duplica; un WhatsApp de otra empresa no se reasigna. Mostrá antes la vista previa.',
+      },
+    },
+    opConfig: {
+      list: {
+        method: 'GET',
+        note: 'q busca por nombre, CUIT o ID de cliente del ERP. query {status, erp_customer_id (exacto), erp_linked: true|false (sincronizadas desde el ERP o no)}.',
+      },
     },
     children: {
-      members: { path: '/{id}/members', ops: ['list', 'create', 'update', 'delete'], notes: { update: 'child_id = memberId.' } },
+      members: {
+        path: '/{id}/members',
+        ops: ['list', 'create', 'update', 'delete'],
+        notes: {
+          create:
+            'Contacto sin acceso al portal: body {contact:true, first_name, email y/o whatsapp_phone (con código de país), role?, can_view_balance?, can_receive_notifications?}. Con email + password crea la cuenta del portal y le llega el mail de alta.',
+          update:
+            'child_id = memberId. body {role?, status?, whatsapp_phone? (null lo quita), can_view_balance? (consultar saldo), can_receive_notifications? (recibir avisos)}. Los dos permisos son independientes y necesitan un WhatsApp.',
+        },
+      },
     },
   },
   b2b_draft_orders: {
