@@ -81,7 +81,7 @@ export const RESOURCES = {
         path: '/recipients-preview',
         mutating: false,
         requires: ['body.recipients'],
-        note: 'A quiénes les llegaría: body {recipients, condition?}. Devuelve empresas, usuarios autorizados, si cumplen hoy la condición y unreachable_company_ids (empresas elegidas sin nadie a quien avisar). No crea ni manda nada.',
+        note: 'A quiénes les llegaría: body {recipients, condition?}. Devuelve empresas, usuarios autorizados, si cumplen hoy la condición y unreachable_company_ids (empresas elegidas sin nadie a quien avisar). No crea ni manda nada, pero pide permiso de escritura sobre WhatsApp (muestra teléfonos y saldos).',
       },
     },
   },
